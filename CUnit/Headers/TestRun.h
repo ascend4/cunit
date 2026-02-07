@@ -207,6 +207,17 @@ CU_EXPORT CU_SuiteCleanupFailureMessageHandler CU_get_suite_cleanup_failure_hand
 /**< Retrieves the message handler called when a suite cleanup error occurs. */
 
 /*--------------------------------------------------------------------
+ * Optional per-test output capture control.
+ *--------------------------------------------------------------------*/
+/**
+ * Enable or disable per-test stdout/stderr capture around the test function.
+ * Default is disabled to preserve existing behavior.
+ *
+ * @param enabled non-zero to enable capture, 0 to disable
+ */
+CU_EXPORT void CU_set_test_output_capture(int enabled);
+
+/*--------------------------------------------------------------------
  * Functions for running registered tests and suites.
  *--------------------------------------------------------------------*/
 CU_EXPORT CU_ErrorCode CU_run_all_tests(void);

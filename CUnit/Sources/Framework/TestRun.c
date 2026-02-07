@@ -132,6 +132,139 @@ static CU_SuiteInitFailureMessageHandler    f_pSuiteInitFailureMessageHandler = 
 /** Pointer to the function to be called if a suite cleanup function returns an error. */
 static CU_SuiteCleanupFailureMessageHandler f_pSuiteCleanupFailureMessageHandler = NULL;
 
+/** Flag for whether per-test output capture is enabled. */
+static int f_capture_test_output = 0;
+
+/*---------------------------------------------------------------------------
+  Optional per-test output capture implementation (POSIX)
+*/
+#ifndef __WIN32__
+# include <unistd.h>
+# include <fcntl.h>
+# include <sys/stat.h>
+# include <errno.h>
+static int f_capture_out_fd = -1;
+static int f_capture_err_fd = -1;
+static int f_capture_saved_out = -1;
+static int f_capture_saved_err = -1;
+static char f_capture_out_path[256];
+static char f_capture_err_path[256];
+
+static void cu_capture_cleanup_files(void){
+  if(f_capture_out_path[0] != '\0'){
+    unlink(f_capture_out_path);
+    f_capture_out_path[0] = '\0';
+  }
+  if(f_capture_err_path[0] != '\0'){
+    unlink(f_capture_err_path);
+    f_capture_err_path[0] = '\0';
+  }
+}
+
+static int cu_capture_start(void){
+  int out_fd = -1;
+  int err_fd = -1;
+
+  if(f_capture_saved_out != -1 || f_capture_saved_err != -1){
+    return -1;
+  }
+
+  strncpy(f_capture_out_path, "/tmp/cunit_out_XXXXXX", sizeof(f_capture_out_path));
+  f_capture_out_path[sizeof(f_capture_out_path) - 1] = '\0';
+  out_fd = mkstemp(f_capture_out_path);
+  if(out_fd == -1){
+    f_capture_out_path[0] = '\0';
+    return -1;
+  }
+
+  strncpy(f_capture_err_path, "/tmp/cunit_err_XXXXXX", sizeof(f_capture_err_path));
+  f_capture_err_path[sizeof(f_capture_err_path) - 1] = '\0';
+  err_fd = mkstemp(f_capture_err_path);
+  if(err_fd == -1){
+    close(out_fd);
+    unlink(f_capture_out_path);
+    f_capture_out_path[0] = '\0';
+    f_capture_err_path[0] = '\0';
+    return -1;
+  }
+
+  f_capture_saved_out = dup(fileno(stdout));
+  f_capture_saved_err = dup(fileno(stderr));
+  if(f_capture_saved_out == -1 || f_capture_saved_err == -1){
+    close(out_fd);
+    close(err_fd);
+    cu_capture_cleanup_files();
+    if(f_capture_saved_out != -1){ close(f_capture_saved_out); f_capture_saved_out = -1; }
+    if(f_capture_saved_err != -1){ close(f_capture_saved_err); f_capture_saved_err = -1; }
+    return -1;
+  }
+
+  if(dup2(out_fd, fileno(stdout)) == -1 || dup2(err_fd, fileno(stderr)) == -1){
+    close(out_fd);
+    close(err_fd);
+    cu_capture_cleanup_files();
+    close(f_capture_saved_out); f_capture_saved_out = -1;
+    close(f_capture_saved_err); f_capture_saved_err = -1;
+    return -1;
+  }
+
+  f_capture_out_fd = out_fd;
+  f_capture_err_fd = err_fd;
+  return 0;
+}
+
+static void cu_capture_stop(int dump){
+  if(f_capture_saved_out != -1){
+    fflush(stdout);
+  }
+  if(f_capture_saved_err != -1){
+    fflush(stderr);
+  }
+
+  if(f_capture_saved_out != -1){
+    dup2(f_capture_saved_out, fileno(stdout));
+    close(f_capture_saved_out);
+    f_capture_saved_out = -1;
+  }
+  if(f_capture_saved_err != -1){
+    dup2(f_capture_saved_err, fileno(stderr));
+    close(f_capture_saved_err);
+    f_capture_saved_err = -1;
+  }
+
+  if(dump){
+    FILE *out = fopen(f_capture_out_path, "r");
+    FILE *err = fopen(f_capture_err_path, "r");
+    int c;
+    if(out){
+      fprintf(stderr, "\n--- captured stdout ---\n");
+      while((c = fgetc(out)) != EOF){
+        fputc(c, stderr);
+      }
+      fprintf(stderr, "\n--- end captured stdout ---\n");
+      fclose(out);
+    }
+    if(err){
+      fprintf(stderr, "\n--- captured stderr ---\n");
+      while((c = fgetc(err)) != EOF){
+        fputc(c, stderr);
+      }
+      fprintf(stderr, "\n--- end captured stderr ---\n");
+      fclose(err);
+    }
+  }
+
+  if(f_capture_out_fd != -1){
+    close(f_capture_out_fd);
+    f_capture_out_fd = -1;
+  }
+  if(f_capture_err_fd != -1){
+    close(f_capture_err_fd);
+    f_capture_err_fd = -1;
+  }
+  cu_capture_cleanup_files();
+}
+#endif /* __WIN32__ */
 /*=================================================================
  * Private function forward declarations
  *=================================================================*/
@@ -261,6 +394,11 @@ CU_SuiteInitFailureMessageHandler CU_get_suite_init_failure_handler(void)
 CU_SuiteCleanupFailureMessageHandler CU_get_suite_cleanup_failure_handler(void)
 {
   return f_pSuiteCleanupFailureMessageHandler;
+}
+
+void CU_set_test_output_capture(int enabled)
+{
+  f_capture_test_output = enabled ? 1 : 0;
 }
 
 /*------------------------------------------------------------------------*/
@@ -1100,6 +1238,7 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
   volatile CU_pFailureRecord pLastFailure = f_last_failure;
   jmp_buf buf;
   CU_ErrorCode result = CUE_SUCCESS;
+  int capture_enabled = 0;
 
   assert(NULL != f_pCurSuite);
   assert(CU_FALSE != f_pCurSuite->fActive);
@@ -1120,6 +1259,14 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
 
     if (NULL != f_pCurSuite->pSetUpFunc) {
       (*f_pCurSuite->pSetUpFunc)();
+    }
+
+    if(f_capture_test_output){
+#ifndef __WIN32__
+      if(0 == cu_capture_start()){
+        capture_enabled = 1;
+      }
+#endif
     }
 
     /* set jmp_buf and run test */
@@ -1157,6 +1304,12 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
     result = CUE_TEST_FAIL;
   }else{
     pLastFailure = NULL;                   /* no additional failure - set to NULL */
+  }
+  if(capture_enabled){
+#ifndef __WIN32__
+    cu_capture_stop((result == CUE_TEST_FAIL) ? 1 : 0);
+#endif
+    capture_enabled = 0;
   }
 
   if(NULL != f_pTestCompleteMessageHandler) {
