@@ -1,26 +1,71 @@
-INSTALL_HOME=
-if [ $# -gt 0 ]; then
-	INSTALL_HOME=$1
-fi
+#!/usr/bin/env bash
+set -euo pipefail
 
-if [ "$INSTALL_HOME"X == "X" ]; then
-	INSTALL_HOME=$HOME/CUnitHome
-fi
+do_configure=0
+prefix="${HOME}/CUnitHome"
 
-libtoolize --force --copy && \
-aclocal && \
-autoheader && \
-automake --add-missing --include-deps --copy && \
-autoconf
+usage() {
+  cat <<'EOF'
+Usage: ./bootstrap [--configure] [--prefix PATH]
 
-if [ $? -ne 0 ]; then
-	echo "Automake/Autoconf returned with error."
-	exit 1
-fi
+Regenerates autotools files using autoreconf.
+By default this does not run ./configure.
 
-mkdir -p $INSTALL_HOME
-if [ $# -gt 0 ]; then
-	./configure --srcdir=`pwd` --prefix=$INSTALL_HOME --enable-debug --enable-automated --enable-basic --enable-console --enable-examples --enable-test
+Options:
+  --configure      Run ./configure after autoreconf.
+  --prefix PATH    Prefix used when --configure is set.
+  -h, --help       Show this help.
+
+Backward compatibility:
+  A single positional argument is treated as --prefix PATH and implies --configure.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --configure)
+      do_configure=1
+      shift
+      ;;
+    --prefix)
+      shift
+      if [ $# -eq 0 ]; then
+        echo "ERROR: --prefix requires a value." >&2
+        exit 1
+      fi
+      prefix="$1"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [ "$1" != "" ]; then
+        prefix="$1"
+        do_configure=1
+        shift
+      fi
+      ;;
+  esac
+done
+
+mkdir -p m4
+autoreconf -fvi
+
+if [ "$do_configure" -eq 1 ]; then
+  mkdir -p "$prefix"
+  ./configure \
+    --prefix="$prefix" \
+    --enable-debug \
+    --enable-memtrace \
+    --enable-automated \
+    --enable-basic \
+    --enable-console \
+    --enable-examples \
+    --enable-test
 else
-	./configure --srcdir=`pwd` --prefix=$INSTALL_HOME --enable-debug --enable-memtrace --enable-automated --enable-basic --enable-console --enable-examples --enable-test
+  echo
+  echo "Bootstrap complete."
+  echo "Next step: ./configure --prefix=\$HOME/.local [options]"
 fi
