@@ -135,10 +135,156 @@ static CU_SuiteCleanupFailureMessageHandler f_pSuiteCleanupFailureMessageHandler
 /** Flag for whether per-test output capture is enabled. */
 static int f_capture_test_output = 0;
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) || defined(__WIN32__)
+# define CU_PLATFORM_WIN32 1
+#else
+# define CU_PLATFORM_WIN32 0
+#endif
+
 /*---------------------------------------------------------------------------
-  Optional per-test output capture implementation (POSIX)
+  Optional per-test output capture implementation
 */
-#ifndef __WIN32__
+#if CU_PLATFORM_WIN32
+# include <windows.h>
+# include <io.h>
+# include <fcntl.h>
+# include <sys/stat.h>
+static int f_capture_out_fd = -1;
+static int f_capture_err_fd = -1;
+static int f_capture_saved_out = -1;
+static int f_capture_saved_err = -1;
+static char f_capture_out_path[256];
+static char f_capture_err_path[256];
+
+static void cu_capture_cleanup_files(void){
+  if(f_capture_out_path[0] != '\0'){
+    remove(f_capture_out_path);
+    f_capture_out_path[0] = '\0';
+  }
+  if(f_capture_err_path[0] != '\0'){
+    remove(f_capture_err_path);
+    f_capture_err_path[0] = '\0';
+  }
+}
+
+static int cu_capture_start(void){
+  char temp_path[MAX_PATH];
+  unsigned long temp_len;
+  int out_fd = -1;
+  int err_fd = -1;
+
+  if(f_capture_saved_out != -1 || f_capture_saved_err != -1){
+    return -1;
+  }
+
+  temp_len = GetTempPathA(sizeof(temp_path), temp_path);
+  if(temp_len == 0 || temp_len > (sizeof(temp_path) - 1)){
+    f_capture_out_path[0] = '\0';
+    f_capture_err_path[0] = '\0';
+    return -1;
+  }
+
+  if(0 == GetTempFileNameA(temp_path, "cuo", 0, f_capture_out_path)){
+    f_capture_out_path[0] = '\0';
+    f_capture_err_path[0] = '\0';
+    return -1;
+  }
+
+  if(0 == GetTempFileNameA(temp_path, "cue", 0, f_capture_err_path)){
+    remove(f_capture_out_path);
+    f_capture_out_path[0] = '\0';
+    f_capture_err_path[0] = '\0';
+    return -1;
+  }
+
+  out_fd = _open(f_capture_out_path, _O_RDWR | _O_BINARY | _O_TRUNC, _S_IREAD | _S_IWRITE);
+  if(out_fd == -1){
+    cu_capture_cleanup_files();
+    return -1;
+  }
+
+  err_fd = _open(f_capture_err_path, _O_RDWR | _O_BINARY | _O_TRUNC, _S_IREAD | _S_IWRITE);
+  if(err_fd == -1){
+    _close(out_fd);
+    cu_capture_cleanup_files();
+    return -1;
+  }
+
+  f_capture_saved_out = _dup(_fileno(stdout));
+  f_capture_saved_err = _dup(_fileno(stderr));
+  if(f_capture_saved_out == -1 || f_capture_saved_err == -1){
+    _close(out_fd);
+    _close(err_fd);
+    cu_capture_cleanup_files();
+    if(f_capture_saved_out != -1){ _close(f_capture_saved_out); f_capture_saved_out = -1; }
+    if(f_capture_saved_err != -1){ _close(f_capture_saved_err); f_capture_saved_err = -1; }
+    return -1;
+  }
+
+  if(_dup2(out_fd, _fileno(stdout)) == -1 || _dup2(err_fd, _fileno(stderr)) == -1){
+    _close(out_fd);
+    _close(err_fd);
+    cu_capture_cleanup_files();
+    _close(f_capture_saved_out); f_capture_saved_out = -1;
+    _close(f_capture_saved_err); f_capture_saved_err = -1;
+    return -1;
+  }
+
+  f_capture_out_fd = out_fd;
+  f_capture_err_fd = err_fd;
+  return 0;
+}
+
+static void cu_capture_stop(int dump){
+  char buf[512];
+  int nread;
+
+  if(f_capture_saved_out != -1){
+    fflush(stdout);
+  }
+  if(f_capture_saved_err != -1){
+    fflush(stderr);
+  }
+
+  if(f_capture_saved_out != -1){
+    _dup2(f_capture_saved_out, _fileno(stdout));
+    _close(f_capture_saved_out);
+    f_capture_saved_out = -1;
+  }
+  if(f_capture_saved_err != -1){
+    _dup2(f_capture_saved_err, _fileno(stderr));
+    _close(f_capture_saved_err);
+    f_capture_saved_err = -1;
+  }
+
+  if(dump){
+    if(f_capture_out_fd != -1 && _lseek(f_capture_out_fd, 0, SEEK_SET) != -1){
+      fprintf(stderr, "\n--- captured stdout ---\n");
+      while((nread = _read(f_capture_out_fd, buf, sizeof(buf))) > 0){
+        fwrite(buf, 1, (size_t)nread, stderr);
+      }
+      fprintf(stderr, "\n--- end captured stdout ---\n");
+    }
+    if(f_capture_err_fd != -1 && _lseek(f_capture_err_fd, 0, SEEK_SET) != -1){
+      fprintf(stderr, "\n--- captured stderr ---\n");
+      while((nread = _read(f_capture_err_fd, buf, sizeof(buf))) > 0){
+        fwrite(buf, 1, (size_t)nread, stderr);
+      }
+      fprintf(stderr, "\n--- end captured stderr ---\n");
+    }
+  }
+
+  if(f_capture_out_fd != -1){
+    _close(f_capture_out_fd);
+    f_capture_out_fd = -1;
+  }
+  if(f_capture_err_fd != -1){
+    _close(f_capture_err_fd);
+    f_capture_err_fd = -1;
+  }
+  cu_capture_cleanup_files();
+}
+#else
 # include <unistd.h>
 # include <fcntl.h>
 # include <sys/stat.h>
@@ -264,7 +410,7 @@ static void cu_capture_stop(int dump){
   }
   cu_capture_cleanup_files();
 }
-#endif /* __WIN32__ */
+#endif /* CU_PLATFORM_WIN32 */
 /*=================================================================
  * Private function forward declarations
  *=================================================================*/
@@ -1262,11 +1408,9 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
     }
 
     if(f_capture_test_output){
-#ifndef __WIN32__
       if(0 == cu_capture_start()){
         capture_enabled = 1;
       }
-#endif
     }
 
     /* set jmp_buf and run test */
@@ -1306,9 +1450,7 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
     pLastFailure = NULL;                   /* no additional failure - set to NULL */
   }
   if(capture_enabled){
-#ifndef __WIN32__
     cu_capture_stop((result == CUE_TEST_FAIL) ? 1 : 0);
-#endif
     capture_enabled = 0;
   }
 
