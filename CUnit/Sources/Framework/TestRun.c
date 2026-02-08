@@ -153,8 +153,8 @@ static int f_capture_out_fd = -1;
 static int f_capture_err_fd = -1;
 static int f_capture_saved_out = -1;
 static int f_capture_saved_err = -1;
-static char f_capture_out_path[256];
-static char f_capture_err_path[256];
+static char f_capture_out_path[MAX_PATH];
+static char f_capture_err_path[MAX_PATH];
 
 static void cu_capture_cleanup_files(void){
   if(f_capture_out_path[0] != '\0'){
@@ -1105,10 +1105,6 @@ static void add_failure(CU_pFailureRecord* ppFailure,
 
   assert(NULL != ppFailure);
 
-  fprintf(stderr,"%s:%d:Got new failure '%s' in suite '%s'\n"
-      ,szFileName?szFileName:"(no filename)",uiLineNumber,szCondition,pSuite?pSuite->pName:"NULL"
-  );
-
   pFailureNew = (CU_pFailureRecord)CU_MALLOC(sizeof(CU_FailureRecord));
 
   if (NULL == pFailureNew) {
@@ -1308,10 +1304,10 @@ static CU_ErrorCode run_single_suite(CU_pSuite pSuite, CU_pRunSummary pRunSummar
         pTest = pTest->pNext;
 
         if (CUE_SUCCESS == result) {
-          pSuite->uiNumberOfTestsFailed++;
+          pSuite->uiNumberOfTestsSuccess++;
         }
         else {
-          pSuite->uiNumberOfTestsSuccess++;
+          pSuite->uiNumberOfTestsFailed++;
         }
       }
       pRunSummary->nSuitesRun++;
@@ -1385,6 +1381,7 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
   jmp_buf buf;
   CU_ErrorCode result = CUE_SUCCESS;
   int capture_enabled = 0;
+  int test_failed = 0;
 
   assert(NULL != f_pCurSuite);
   assert(CU_FALSE != f_pCurSuite->fActive);
@@ -1440,17 +1437,17 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
   if(pRunSummary->nFailureRecords > nStartFailures) {
     //fprintf(stderr,"\nFound some failures...\n");
     pRunSummary->nTestsFailed++;
+    test_failed = 1;
     if(NULL != pLastFailure) {
       pLastFailure = pLastFailure->pNext;  /* was a previous failure, so go to next one */
     }else{
       pLastFailure = f_failure_list;       /* no previous failure - go to 1st one */
     }
-    result = CUE_TEST_FAIL;
   }else{
     pLastFailure = NULL;                   /* no additional failure - set to NULL */
   }
   if(capture_enabled){
-    cu_capture_stop((result == CUE_TEST_FAIL) ? 1 : 0);
+    cu_capture_stop(test_failed ? 1 : 0);
     capture_enabled = 0;
   }
 
