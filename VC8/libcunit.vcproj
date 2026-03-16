@@ -1109,7 +1109,7 @@
 				</FileConfiguration>
 			</File>
 			<File
-				RelativePath="..\README"
+				RelativePath="..\README.md"
 				>
 				<FileConfiguration
 					Name="Debug - Static Lib|Win32"

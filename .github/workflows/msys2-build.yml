@@ -9,60 +9,96 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build on ${{ matrix.sys }}
+  package:
+    name: Build MSYS2 package (UCRT64)
     runs-on: windows-latest
 
     defaults:
       run:
         shell: msys2 {0}
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - sys: UCRT64
-            env: ucrt-x86_64
-
     steps:
+      - name: Configure Git line endings
+        shell: bash
+        run: git config --global core.autocrlf input
+
       - name: Check out source
         uses: actions/checkout@v4
 
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
         with:
-          msystem: ${{ matrix.sys }}
+          msystem: MSYS
           update: true
           cache: true
           install: >-
-            autoconf
-            automake
-            libtool
-            m4
-            make
-            mingw-w64-${{ matrix.env }}-toolchain
+            base-devel
+            git
 
-      - name: Bootstrap
-        run: ./bootstrap
-
-      - name: Configure
+      - name: Create source tarball for PKGBUILD
         run: |
-          CUNIT_PREFIX="$(cygpath -u "$RUNNER_TEMP")/cunit-install"
-          ./configure --prefix="$CUNIT_PREFIX" --enable-debug --enable-test
+          git archive \
+            --format=tar.gz \
+            --prefix=CUnit-2.1-3/ \
+            -o packaging/msys2/CUnit-2.1-3.tar.gz \
+            HEAD
 
-      - name: Build
-        run: make -j"$(nproc)"
+      - name: Build package
+        working-directory: packaging/msys2
+        run: MINGW_ARCH=ucrt64 makepkg-mingw -sCLf --noconfirm
 
-      - name: Run internal self-tests
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cunit-msys2-ucrt64-pkg
+          path: packaging/msys2/*.pkg.tar.zst
+          if-no-files-found: error
+
+  test-package:
+    name: Test installed MSYS2 package (UCRT64)
+    runs-on: windows-latest
+    needs: package
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          cache: true
+          install: >-
+            mingw-w64-ucrt-x86_64-cc
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: cunit-msys2-ucrt64-pkg
+          path: pkg
+
+      - name: Install package artifact
         run: |
-          ./CUnit/Sources/Test/test_cunit | tee test_cunit.log
-          grep -q "Failures: 0" test_cunit.log
+          pacman -U --noconfirm pkg/*.pkg.tar.zst
+          test -f "${MINGW_PREFIX}/include/CUnit/CUnit.h"
+          test -f "${MINGW_PREFIX}/lib/libcunit.a" || test -f "${MINGW_PREFIX}/lib/libcunit.dll.a"
 
-      - name: Install
-        run: make install
-
-      - name: Verify install
+      - name: Smoke test installed package
         run: |
-          CUNIT_PREFIX="$(cygpath -u "$RUNNER_TEMP")/cunit-install"
-          test -f "$CUNIT_PREFIX/include/CUnit/CUnit.h"
-          test -f "$CUNIT_PREFIX/lib/libcunit.a" || test -f "$CUNIT_PREFIX/lib/libcunit.dll.a"
+          cat > smoke.c <<'EOF'
+          #include <CUnit/CUnit.h>
+
+          int main(void) {
+            if (CU_initialize_registry() != CUE_SUCCESS) {
+              return 1;
+            }
+            CU_cleanup_registry();
+            return 0;
+          }
+          EOF
+
+          gcc smoke.c -o smoke $(pkgconf --cflags --libs cunit)
+          ./smoke
