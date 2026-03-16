@@ -1,27 +1,72 @@
-INSTALL_HOME=
-if [ $# -gt 0 ]; then
-	INSTALL_HOME=$1
-	shift
-fi
+#!/usr/bin/env bash
+set -euo pipefail
 
-if [ "$INSTALL_HOME"X == "X" ]; then
-	INSTALL_HOME=$HOME/CUnitHome
-fi
+do_configure=0
+prefix="${HOME}/CUnitHome"
+configure_args=()
 
-libtoolize --force --copy && \
-aclocal && \
-autoheader && \
-automake --add-missing --include-deps --copy && \
-autoconf
+usage() {
+  cat <<'EOF'
+Usage: ./bootstrap [--configure] [--prefix PATH] [-- CONFIGURE_ARGS...]
 
-if [ $? -ne 0 ]; then
-	echo "Automake/Autoconf returned with error."
-	exit 1
-fi
+Regenerates Autotools files using autoreconf.
+By default this does not run ./configure.
 
-mkdir -p $INSTALL_HOME
-if [ $# -gt 0 ]; then
-	./configure --srcdir=`pwd` --prefix=$INSTALL_HOME --enable-debug --enable-automated --enable-basic --enable-console --enable-examples --enable-test
+Options:
+  --configure      Run ./configure after autoreconf.
+  --prefix PATH    Prefix used when --configure is set.
+  --help           Show this help.
+
+Backward compatibility:
+  A single positional argument is treated as --prefix PATH and implies --configure.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --configure)
+      do_configure=1
+      shift
+      ;;
+    --prefix)
+      shift
+      if [ $# -eq 0 ]; then
+        echo "ERROR: --prefix requires a value." >&2
+        exit 1
+      fi
+      prefix="$1"
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      configure_args+=("$@")
+      break
+      ;;
+    -*)
+      echo "ERROR: unknown option '$1'." >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      prefix="$1"
+      do_configure=1
+      shift
+      ;;
+  esac
+done
+
+mkdir -p m4
+autoreconf -fvi
+
+if [ "$do_configure" -eq 1 ]; then
+  mkdir -p "$prefix"
+  ./configure --srcdir="$(pwd)" --prefix="$prefix" "${configure_args[@]}"
 else
-	./configure --srcdir=`pwd` --prefix=$INSTALL_HOME --enable-debug --enable-memtrace --enable-automated --enable-basic --enable-console --enable-examples --enable-test
+  echo
+  echo "Bootstrap complete."
+  echo "Next step: ./configure --prefix=\$HOME/.local [options]"
 fi
