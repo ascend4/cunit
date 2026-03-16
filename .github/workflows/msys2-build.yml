@@ -42,7 +42,8 @@ jobs:
             exit 1
           fi
 
-          echo "dist_name=CUnit-${version_file}" >> "${GITHUB_OUTPUT}"
+          echo "dist_dir=CUnit-${version_file}" >> "${GITHUB_OUTPUT}"
+          echo "dist_file=cunit-${version_file}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
@@ -56,14 +57,14 @@ jobs:
 
       - name: Create source tarball for PKGBUILD
         env:
-          DIST_NAME: ${{ steps.version.outputs.dist_name }}
+          DIST_DIR: ${{ steps.version.outputs.dist_dir }}
+          DIST_FILE: ${{ steps.version.outputs.dist_file }}
         working-directory: packaging/msys2
         run: |
           git -C ../.. archive \
             --format=tar.gz \
-            --prefix="${DIST_NAME}/" \
-            -o "${DIST_NAME}.tar.gz" \
-            HEAD
+            --prefix="${DIST_DIR}/" \
+            HEAD > "${DIST_FILE}.tar.gz"
 
       - name: Build package
         working-directory: packaging/msys2

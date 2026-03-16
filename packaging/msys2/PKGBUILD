@@ -5,6 +5,7 @@ pkgbase=mingw-w64-${_realname}
 pkgname=("${MINGW_PACKAGE_PREFIX}-${_realname}")
 _distname="CUnit"
 _distver="2.2-2"
+_srcname="cunit"
 pkgver=2.2.2
 pkgrel=6
 pkgdesc="Lightweight system for writing, administering, and running unit tests in C (mingw-w64)"
@@ -13,7 +14,7 @@ mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clangarm64')
 url='https://github.com/ascend4/cunit'
 license=('LGPL2.1')
 makedepends=("${MINGW_PACKAGE_PREFIX}-autotools" "${MINGW_PACKAGE_PREFIX}-cc")
-source=("${_distname}-${_distver}.tar.gz"
+source=("${_srcname}-${_distver}.tar.gz"
         "002-fix-shared.patch")
 sha256sums=('SKIP'
             '03aa848d6cd7464f24efacccfffb4d3942515bde0b36c3ef5ea0d7141d663269')
