@@ -89,13 +89,14 @@ PRE_UNINSTALL = :
 POST_UNINSTALL = :
 build_triplet = @build@
 host_triplet = @host@
+@ENABLE_CURSES_TRUE@am__append_1 = -l$(CURSES_LIB)
 subdir = CUnit/Sources
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.in
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 DIST_COMMON = $(srcdir)/Makefile.am $(am__DIST_COMMON)
-mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
+mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = $(top_builddir)/config.h
 CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
@@ -138,7 +139,9 @@ libcunit_test_a_AR = $(AR) $(ARFLAGS)
 @ENABLE_TEST_TRUE@libcunit_test_a_DEPENDENCIES = $(TEST_OBJECTS)
 am_libcunit_test_a_OBJECTS =
 libcunit_test_a_OBJECTS = $(am_libcunit_test_a_OBJECTS)
-libcunit_la_DEPENDENCIES = $(OBJECT_FILES_SHARED)
+am__DEPENDENCIES_1 =
+libcunit_la_DEPENDENCIES = $(OBJECT_FILES_SHARED) \
+	$(am__DEPENDENCIES_1)
 am_libcunit_la_OBJECTS =
 libcunit_la_OBJECTS = $(am_libcunit_la_OBJECTS)
 AM_V_lt = $(am__v_lt_@AM_V@)
@@ -220,7 +223,7 @@ am__define_uniq_tagged_files = \
     if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
   done | $(am__uniquify_input)`
 DIST_SUBDIRS = Framework Automated Basic Console Curses . Test
-am__DIST_COMMON = $(srcdir)/Makefile.in $(top_srcdir)/mkinstalldirs
+am__DIST_COMMON = $(srcdir)/Makefile.in
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 am__relativize = \
   dir0=`pwd`; \
@@ -433,7 +436,7 @@ TEST_OBJECTS = $(TEST_OBJECT_FILES)
 SUBDIRS = $(COMPILE_DIRS)
 lib_LTLIBRARIES = libcunit.la
 libcunit_la_SOURCES = 
-libcunit_la_LIBADD = $(OBJECT_FILES_SHARED)
+libcunit_la_LIBADD = $(OBJECT_FILES_SHARED) $(am__append_1)
 libcunit_la_LDFLAGS = -version-info @LIBTOOL_CURRENT@:@LIBTOOL_REVISION@:@LIBTOOL_AGE@
 @ENABLE_TEST_TRUE@noinst_LIBRARIES = libcunit_test.a
 @ENABLE_TEST_TRUE@libcunit_test_a_SOURCES = 
