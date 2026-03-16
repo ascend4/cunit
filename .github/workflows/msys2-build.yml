@@ -1,0 +1,68 @@
+name: CUnit MSYS2 Build
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build on ${{ matrix.sys }}
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sys: UCRT64
+            env: ucrt-x86_64
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.sys }}
+          update: true
+          cache: true
+          install: >-
+            autoconf
+            automake
+            libtool
+            m4
+            make
+            mingw-w64-${{ matrix.env }}-toolchain
+
+      - name: Bootstrap
+        run: ./bootstrap
+
+      - name: Configure
+        run: |
+          CUNIT_PREFIX="$(cygpath -u "$RUNNER_TEMP")/cunit-install"
+          ./configure --prefix="$CUNIT_PREFIX" --enable-debug --enable-test
+
+      - name: Build
+        run: make -j"$(nproc)"
+
+      - name: Run internal self-tests
+        run: |
+          ./CUnit/Sources/Test/test_cunit | tee test_cunit.log
+          grep -q "Failures: 0" test_cunit.log
+
+      - name: Install
+        run: make install
+
+      - name: Verify install
+        run: |
+          CUNIT_PREFIX="$(cygpath -u "$RUNNER_TEMP")/cunit-install"
+          test -f "$CUNIT_PREFIX/include/CUnit/CUnit.h"
+          test -f "$CUNIT_PREFIX/lib/libcunit.a" || test -f "$CUNIT_PREFIX/lib/libcunit.dll.a"
