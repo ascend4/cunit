@@ -1,0 +1,176 @@
+name: CUnit Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  verify-version:
+    name: Verify tag and VERSION
+    runs-on: ubuntu-latest
+    outputs:
+      version_file: ${{ steps.verify.outputs.version_file }}
+      pkg_version: ${{ steps.verify.outputs.pkg_version }}
+      dist_name: ${{ steps.verify.outputs.dist_name }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches VERSION
+        id: verify
+        shell: bash
+        run: |
+          version_file="$(tr -d '[:space:]' < VERSION)"
+          pkg_version="${version_file//-/.}"
+          expected_tag="v${pkg_version}"
+
+          if [ "${GITHUB_REF_NAME}" != "${expected_tag}" ]; then
+            echo "Tag/version mismatch" >&2
+            echo "  VERSION file: ${version_file}" >&2
+            echo "  Expected tag: ${expected_tag}" >&2
+            echo "  Actual tag:   ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+
+          if ! grep -Fq "_distver=\"${version_file}\"" packaging/msys2/PKGBUILD; then
+            echo "PKGBUILD _distver does not match VERSION (${version_file})" >&2
+            exit 1
+          fi
+
+          if ! grep -Eq "^pkgver=${pkg_version//./\\.}$" packaging/msys2/PKGBUILD; then
+            echo "PKGBUILD pkgver does not match VERSION (${pkg_version})" >&2
+            exit 1
+          fi
+
+          echo "version_file=${version_file}" >> "${GITHUB_OUTPUT}"
+          echo "pkg_version=${pkg_version}" >> "${GITHUB_OUTPUT}"
+          echo "dist_name=CUnit-${version_file}" >> "${GITHUB_OUTPUT}"
+
+  package:
+    name: Build release assets (UCRT64)
+    runs-on: windows-latest
+    needs: verify-version
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Configure Git line endings
+        shell: bash
+        run: git config --global core.autocrlf input
+
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          update: true
+          cache: true
+          install: >-
+            base-devel
+            git
+
+      - name: Create source tarball for PKGBUILD
+        env:
+          DIST_NAME: ${{ needs.verify-version.outputs.dist_name }}
+        run: |
+          git archive \
+            --format=tar.gz \
+            --prefix="${DIST_NAME}/" \
+            -o "packaging/msys2/${DIST_NAME}.tar.gz" \
+            HEAD
+
+      - name: Build package
+        working-directory: packaging/msys2
+        run: MINGW_ARCH=ucrt64 makepkg-mingw -sCLf --noconfirm
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: cunit-release-assets
+          path: |
+            packaging/msys2/*.pkg.tar.zst
+            packaging/msys2/*.tar.gz
+          if-no-files-found: error
+
+  test-package:
+    name: Test installed release package (UCRT64)
+    runs-on: windows-latest
+    needs: package
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          cache: true
+          install: >-
+            mingw-w64-ucrt-x86_64-cc
+            mingw-w64-ucrt-x86_64-pkgconf
+
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: cunit-release-assets
+          path: release-assets
+
+      - name: Install package artifact
+        run: |
+          pacman -U --noconfirm release-assets/*.pkg.tar.zst
+          test -f "${MINGW_PREFIX}/include/CUnit/CUnit.h"
+          test -f "${MINGW_PREFIX}/lib/libcunit.a" || test -f "${MINGW_PREFIX}/lib/libcunit.dll.a"
+
+      - name: Smoke test installed package
+        run: |
+          cat > smoke.c <<'EOF'
+          #include <CUnit/CUnit.h>
+
+          int main(void) {
+            if (CU_initialize_registry() != CUE_SUCCESS) {
+              return 1;
+            }
+            CU_cleanup_registry();
+            return 0;
+          }
+          EOF
+
+          gcc smoke.c -o smoke $(pkgconf --cflags --libs cunit)
+          ./smoke
+
+  publish-release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs:
+      - verify-version
+      - test-package
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: cunit-release-assets
+          path: release-assets
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PKG_VERSION: ${{ needs.verify-version.outputs.pkg_version }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --verify-tag \
+            --generate-notes \
+            --title "CUnit ${PKG_VERSION}" \
+            release-assets/*

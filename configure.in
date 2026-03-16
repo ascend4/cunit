@@ -235,33 +235,29 @@ AC_SUBST(CURSES_LIB)
 AC_SUBST(BUILD_EXAMPLES)
 AC_SUBST(BUILD_TEST)
 
-dnl Configure Jamrules for user environment
-AC_CONFIG_FILES([Jamrules:Jamrules.in])
-
 dnl Configure Makefile set.
-AC_CONFIG_FILES( Makefile \
-		CUnit.spec \
-		cunit.pc \
-		CUnit/Makefile \
-		CUnit/Headers/Makefile \
-		CUnit/Headers/CUnit.h \
-		CUnit/Sources/Makefile \
-		CUnit/Sources/Framework/Makefile \
-		CUnit/Sources/Automated/Makefile \
-		CUnit/Sources/Basic/Makefile \
-		CUnit/Sources/Console/Makefile \
-		CUnit/Sources/Curses/Makefile \
-		CUnit/Sources/Test/Makefile \
-		doc/Makefile \
-		doc/headers/Makefile \
-		Examples/Makefile \
-		Examples/AutomatedTest/Makefile \
-		Examples/BasicTest/Makefile \
-		Examples/ConsoleTest/Makefile \
-		Examples/CursesTest/Makefile \
-		Man/Makefile \
-		Man/man3/Makefile \
-		Share/Makefile )
+AC_CONFIG_FILES([Makefile
+		CUnit.spec
+		cunit.pc
+		CUnit/Makefile
+		CUnit/Headers/Makefile
+		CUnit/Headers/CUnit.h
+		CUnit/Sources/Makefile
+		CUnit/Sources/Framework/Makefile
+		CUnit/Sources/Automated/Makefile
+		CUnit/Sources/Basic/Makefile
+		CUnit/Sources/Console/Makefile
+		CUnit/Sources/Curses/Makefile
+		CUnit/Sources/Test/Makefile
+		doc/Makefile
+		doc/headers/Makefile
+		Examples/Makefile
+		Examples/AutomatedTest/Makefile
+		Examples/BasicTest/Makefile
+		Examples/ConsoleTest/Makefile
+		Examples/CursesTest/Makefile
+		Man/Makefile
+		Man/man3/Makefile
+		Share/Makefile])
 
 AC_OUTPUT
-

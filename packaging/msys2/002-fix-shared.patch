@@ -1,0 +1,12 @@
+diff --git a/CUnit/Sources/Makefile.am b/CUnit/Sources/Makefile.am
+index d8588ce..626eff9 100644
+--- a/CUnit/Sources/Makefile.am
++++ b/CUnit/Sources/Makefile.am
+@@ -70,7 +70,7 @@ if ENABLE_CURSES
+ libcunit_la_LIBADD += -l$(CURSES_LIB)
+ endif
+-libcunit_la_LDFLAGS = -version-info @LIBTOOL_CURRENT@:@LIBTOOL_REVISION@:@LIBTOOL_AGE@
++libcunit_la_LDFLAGS = -version-info @LIBTOOL_CURRENT@:@LIBTOOL_REVISION@:@LIBTOOL_AGE@ -no-undefined
+ 
+ 
+ if ENABLE_TEST

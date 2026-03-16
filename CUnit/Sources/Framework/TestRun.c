@@ -2,6 +2,7 @@
  *  CUnit - A Unit testing framework library for C.
  *  Copyright (C) 2001       Anil Kumar
  *  Copyright (C) 2004-2006  Anil Kumar, Jerry St.Clair
+ *  Copyright (C) 2012       John Pye
  *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Library General Public
@@ -60,7 +61,9 @@
  *                start and complete events.  Reworked test run routines to
  *                better support these features, suite/test activation. (JDS)
  *
- *  16-Avr-2007   Added setup and teardown functions. (CJN)
+ *  16-Apr-2007   Added setup and teardown functions. (CJN)
+ *
+ *  20-Jan-2012   Adding 'CU_run_selected_tests' (JDP)
  *
  */
 
@@ -132,6 +135,285 @@ static CU_SuiteInitFailureMessageHandler    f_pSuiteInitFailureMessageHandler = 
 /** Pointer to the function to be called if a suite cleanup function returns an error. */
 static CU_SuiteCleanupFailureMessageHandler f_pSuiteCleanupFailureMessageHandler = NULL;
 
+/** Flag for whether per-test output capture is enabled. */
+static int f_capture_test_output = 0;
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) || defined(__WIN32__)
+# define CU_PLATFORM_WIN32 1
+#else
+# define CU_PLATFORM_WIN32 0
+#endif
+
+/*---------------------------------------------------------------------------
+  Optional per-test output capture implementation
+*/
+#if CU_PLATFORM_WIN32
+# include <windows.h>
+# include <io.h>
+# include <fcntl.h>
+# include <sys/stat.h>
+static int f_capture_out_fd = -1;
+static int f_capture_err_fd = -1;
+static int f_capture_saved_out = -1;
+static int f_capture_saved_err = -1;
+static char f_capture_out_path[MAX_PATH];
+static char f_capture_err_path[MAX_PATH];
+
+static void cu_capture_cleanup_files(void){
+  if(f_capture_out_path[0] != '\0'){
+    remove(f_capture_out_path);
+    f_capture_out_path[0] = '\0';
+  }
+  if(f_capture_err_path[0] != '\0'){
+    remove(f_capture_err_path);
+    f_capture_err_path[0] = '\0';
+  }
+}
+
+static int cu_capture_start(void){
+  char temp_path[MAX_PATH];
+  unsigned long temp_len;
+  int out_fd = -1;
+  int err_fd = -1;
+
+  if(f_capture_saved_out != -1 || f_capture_saved_err != -1){
+    return -1;
+  }
+
+  temp_len = GetTempPathA(sizeof(temp_path), temp_path);
+  if(temp_len == 0 || temp_len > (sizeof(temp_path) - 1)){
+    f_capture_out_path[0] = '\0';
+    f_capture_err_path[0] = '\0';
+    return -1;
+  }
+
+  if(0 == GetTempFileNameA(temp_path, "cuo", 0, f_capture_out_path)){
+    f_capture_out_path[0] = '\0';
+    f_capture_err_path[0] = '\0';
+    return -1;
+  }
+
+  if(0 == GetTempFileNameA(temp_path, "cue", 0, f_capture_err_path)){
+    remove(f_capture_out_path);
+    f_capture_out_path[0] = '\0';
+    f_capture_err_path[0] = '\0';
+    return -1;
+  }
+
+  out_fd = _open(f_capture_out_path, _O_RDWR | _O_BINARY | _O_TRUNC, _S_IREAD | _S_IWRITE);
+  if(out_fd == -1){
+    cu_capture_cleanup_files();
+    return -1;
+  }
+
+  err_fd = _open(f_capture_err_path, _O_RDWR | _O_BINARY | _O_TRUNC, _S_IREAD | _S_IWRITE);
+  if(err_fd == -1){
+    _close(out_fd);
+    cu_capture_cleanup_files();
+    return -1;
+  }
+
+  f_capture_saved_out = _dup(_fileno(stdout));
+  f_capture_saved_err = _dup(_fileno(stderr));
+  if(f_capture_saved_out == -1 || f_capture_saved_err == -1){
+    _close(out_fd);
+    _close(err_fd);
+    cu_capture_cleanup_files();
+    if(f_capture_saved_out != -1){ _close(f_capture_saved_out); f_capture_saved_out = -1; }
+    if(f_capture_saved_err != -1){ _close(f_capture_saved_err); f_capture_saved_err = -1; }
+    return -1;
+  }
+
+  if(_dup2(out_fd, _fileno(stdout)) == -1 || _dup2(err_fd, _fileno(stderr)) == -1){
+    _close(out_fd);
+    _close(err_fd);
+    cu_capture_cleanup_files();
+    _close(f_capture_saved_out); f_capture_saved_out = -1;
+    _close(f_capture_saved_err); f_capture_saved_err = -1;
+    return -1;
+  }
+
+  f_capture_out_fd = out_fd;
+  f_capture_err_fd = err_fd;
+  return 0;
+}
+
+static void cu_capture_stop(int dump){
+  char buf[512];
+  int nread;
+
+  if(f_capture_saved_out != -1){
+    fflush(stdout);
+  }
+  if(f_capture_saved_err != -1){
+    fflush(stderr);
+  }
+
+  if(f_capture_saved_out != -1){
+    _dup2(f_capture_saved_out, _fileno(stdout));
+    _close(f_capture_saved_out);
+    f_capture_saved_out = -1;
+  }
+  if(f_capture_saved_err != -1){
+    _dup2(f_capture_saved_err, _fileno(stderr));
+    _close(f_capture_saved_err);
+    f_capture_saved_err = -1;
+  }
+
+  if(dump){
+    if(f_capture_out_fd != -1 && _lseek(f_capture_out_fd, 0, SEEK_SET) != -1){
+      fprintf(stderr, "\n--- captured stdout ---\n");
+      while((nread = _read(f_capture_out_fd, buf, sizeof(buf))) > 0){
+        fwrite(buf, 1, (size_t)nread, stderr);
+      }
+      fprintf(stderr, "\n--- end captured stdout ---\n");
+    }
+    if(f_capture_err_fd != -1 && _lseek(f_capture_err_fd, 0, SEEK_SET) != -1){
+      fprintf(stderr, "\n--- captured stderr ---\n");
+      while((nread = _read(f_capture_err_fd, buf, sizeof(buf))) > 0){
+        fwrite(buf, 1, (size_t)nread, stderr);
+      }
+      fprintf(stderr, "\n--- end captured stderr ---\n");
+    }
+  }
+
+  if(f_capture_out_fd != -1){
+    _close(f_capture_out_fd);
+    f_capture_out_fd = -1;
+  }
+  if(f_capture_err_fd != -1){
+    _close(f_capture_err_fd);
+    f_capture_err_fd = -1;
+  }
+  cu_capture_cleanup_files();
+}
+#else
+# include <unistd.h>
+# include <fcntl.h>
+# include <sys/stat.h>
+# include <errno.h>
+static int f_capture_out_fd = -1;
+static int f_capture_err_fd = -1;
+static int f_capture_saved_out = -1;
+static int f_capture_saved_err = -1;
+static char f_capture_out_path[256];
+static char f_capture_err_path[256];
+
+static void cu_capture_cleanup_files(void){
+  if(f_capture_out_path[0] != '\0'){
+    unlink(f_capture_out_path);
+    f_capture_out_path[0] = '\0';
+  }
+  if(f_capture_err_path[0] != '\0'){
+    unlink(f_capture_err_path);
+    f_capture_err_path[0] = '\0';
+  }
+}
+
+static int cu_capture_start(void){
+  int out_fd = -1;
+  int err_fd = -1;
+
+  if(f_capture_saved_out != -1 || f_capture_saved_err != -1){
+    return -1;
+  }
+
+  strncpy(f_capture_out_path, "/tmp/cunit_out_XXXXXX", sizeof(f_capture_out_path));
+  f_capture_out_path[sizeof(f_capture_out_path) - 1] = '\0';
+  out_fd = mkstemp(f_capture_out_path);
+  if(out_fd == -1){
+    f_capture_out_path[0] = '\0';
+    return -1;
+  }
+
+  strncpy(f_capture_err_path, "/tmp/cunit_err_XXXXXX", sizeof(f_capture_err_path));
+  f_capture_err_path[sizeof(f_capture_err_path) - 1] = '\0';
+  err_fd = mkstemp(f_capture_err_path);
+  if(err_fd == -1){
+    close(out_fd);
+    unlink(f_capture_out_path);
+    f_capture_out_path[0] = '\0';
+    f_capture_err_path[0] = '\0';
+    return -1;
+  }
+
+  f_capture_saved_out = dup(fileno(stdout));
+  f_capture_saved_err = dup(fileno(stderr));
+  if(f_capture_saved_out == -1 || f_capture_saved_err == -1){
+    close(out_fd);
+    close(err_fd);
+    cu_capture_cleanup_files();
+    if(f_capture_saved_out != -1){ close(f_capture_saved_out); f_capture_saved_out = -1; }
+    if(f_capture_saved_err != -1){ close(f_capture_saved_err); f_capture_saved_err = -1; }
+    return -1;
+  }
+
+  if(dup2(out_fd, fileno(stdout)) == -1 || dup2(err_fd, fileno(stderr)) == -1){
+    close(out_fd);
+    close(err_fd);
+    cu_capture_cleanup_files();
+    close(f_capture_saved_out); f_capture_saved_out = -1;
+    close(f_capture_saved_err); f_capture_saved_err = -1;
+    return -1;
+  }
+
+  f_capture_out_fd = out_fd;
+  f_capture_err_fd = err_fd;
+  return 0;
+}
+
+static void cu_capture_stop(int dump){
+  if(f_capture_saved_out != -1){
+    fflush(stdout);
+  }
+  if(f_capture_saved_err != -1){
+    fflush(stderr);
+  }
+
+  if(f_capture_saved_out != -1){
+    dup2(f_capture_saved_out, fileno(stdout));
+    close(f_capture_saved_out);
+    f_capture_saved_out = -1;
+  }
+  if(f_capture_saved_err != -1){
+    dup2(f_capture_saved_err, fileno(stderr));
+    close(f_capture_saved_err);
+    f_capture_saved_err = -1;
+  }
+
+  if(dump){
+    FILE *out = fopen(f_capture_out_path, "r");
+    FILE *err = fopen(f_capture_err_path, "r");
+    int c;
+    if(out){
+      fprintf(stderr, "\n--- captured stdout ---\n");
+      while((c = fgetc(out)) != EOF){
+        fputc(c, stderr);
+      }
+      fprintf(stderr, "\n--- end captured stdout ---\n");
+      fclose(out);
+    }
+    if(err){
+      fprintf(stderr, "\n--- captured stderr ---\n");
+      while((c = fgetc(err)) != EOF){
+        fputc(c, stderr);
+      }
+      fprintf(stderr, "\n--- end captured stderr ---\n");
+      fclose(err);
+    }
+  }
+
+  if(f_capture_out_fd != -1){
+    close(f_capture_out_fd);
+    f_capture_out_fd = -1;
+  }
+  if(f_capture_err_fd != -1){
+    close(f_capture_err_fd);
+    f_capture_err_fd = -1;
+  }
+  cu_capture_cleanup_files();
+}
+#endif /* CU_PLATFORM_WIN32 */
 /*=================================================================
  * Private function forward declarations
  *=================================================================*/
@@ -275,6 +557,11 @@ CU_SuiteCleanupFailureMessageHandler CU_get_suite_cleanup_failure_handler(void)
   return f_pSuiteCleanupFailureMessageHandler;
 }
 
+void CU_set_test_output_capture(int enabled)
+{
+  f_capture_test_output = enabled ? 1 : 0;
+}
+
 /*------------------------------------------------------------------------*/
 unsigned int CU_get_number_of_suites_run(void)
 {
@@ -396,6 +683,134 @@ CU_ErrorCode CU_run_all_tests(void)
   CU_set_error(result);
   return result;
 }
+
+/*------------------------------------------------------------------------*/
+CU_EXPORT CU_ErrorCode CU_run_selected_tests(int argc, char **argv){
+  CU_ErrorCode result = CUE_SUCCESS;
+  CU_ErrorCode result2;
+  struct CU_TestRegistry *reg = CU_get_registry();
+
+  clear_previous_results(&f_run_summary, &f_failure_list);
+  char **name;
+
+  //fprintf(stderr,"Running selected tests...");
+
+  if(NULL == reg) {
+    result = CUE_NOREGISTRY;
+  }else if(NULL == reg->pSuite){
+    result = CUE_NO_SUITENAME;
+  }else{
+
+    /* test run is starting - set flag */
+    f_bTestIsRunning = CU_TRUE;
+    f_start_time = clock();
+
+    /* loop through the argument list */
+    for(name = argv; name <= &argv[argc-1]; ++name){
+      //fprintf(stderr,"Looking for '%s'...\n",*name);
+      /* (*name) will be a string of format SUITENAME.TESTNAME <or> SUITENAME */
+      char suitename[1000];
+      char *s,*n;
+      /* locate the '.' separator and copy bits before that into suitename. */
+      for(s=suitename,n=*name; *n!='.' && *n!='\0' && s < suitename+999; *s++=*n++);
+      *s='\0';
+
+      struct CU_Suite *suite = CU_get_suite_by_name(suitename, reg);
+      if(suite == NULL){
+        add_failure(&f_failure_list, &f_run_summary, CUF_InvalidName,
+            0, _("Invalid suite name"), _("CUnit System"), NULL, NULL
+        );
+        result = (CUE_SUCCESS == result) ? CUE_NO_SUITENAME : result;
+      }else if(CU_FALSE == suite->fActive){
+        fprintf(stderr,"Suite is inactive '%s'\n",suitename);
+        f_run_summary.nSuitesInactive++;
+        if(CU_FALSE != f_failure_on_inactive){
+          add_failure(&f_failure_list, &f_run_summary, CUF_SuiteInactive,
+              0, _("Suite inactive"), _("CUnit System"), suite, NULL
+          );
+        }
+        result = (CUE_SUCCESS == result) ? CUE_SUITE_INACTIVE : result;
+      }else{
+        /* found the suite, did we also get a test name? */
+        if(*n=='.'){
+          n++;
+          struct CU_Test *test;
+          test = CU_get_test_by_name(n,suite);
+          if(test == NULL){
+            //fprintf(stderr,"No matching test '%s'\n",n);
+            /* no matching tset found. */
+            add_failure(&f_failure_list, &f_run_summary, CUF_InvalidName,
+                0, _("Invalid test name"), _("CUnit System"), suite, NULL
+            );
+            result = (CUE_SUCCESS == result) ? CUE_NO_TESTNAME : result;
+          }else{
+            //fprintf(stderr,"Valid test '%s' in suite '%s'\n",n,suitename);
+             /* found a valid suite+test name... run the test! */
+
+            /* run handler for suite start, if any */
+            if (NULL != f_pSuiteStartMessageHandler) {
+              (*f_pSuiteStartMessageHandler)(suite);
+            }
+            /* TODO if multiple tests from s single suite requested, avoid repeating the suite start/stop? */
+
+            /* run the suite initialization function, if any */
+            if ((NULL != suite->pInitializeFunc) && (0 != (*suite->pInitializeFunc)())) {
+              fprintf(stderr,"Failed suite init '%s'\n",suitename);
+
+              /* init function had an error - call handler, if any */
+              if (NULL != f_pSuiteInitFailureMessageHandler) {
+                (*f_pSuiteInitFailureMessageHandler)(suite);
+              }
+              f_run_summary.nSuitesFailed++;
+              add_failure(&f_failure_list, &f_run_summary, CUF_SuiteInitFailed, 0,
+                          _("Suite Initialization failed - Suite Skipped"),
+                          _("CUnit System"), suite, NULL);
+              result = CUE_SINIT_FAILED;
+            }else{
+              //fprintf(stderr,"Running test '%s'...\n",*name);
+              f_pCurSuite = suite;
+              result2 = run_single_test(test, &f_run_summary);
+              f_pCurSuite = NULL;
+              result = (CUE_SUCCESS == result) ? result2 : result;
+            }
+            //fprintf(stderr,"Finished with test '%s'\n",*name);
+          }
+        }else{
+          /* found a suite name only...run the whole suite */
+          //fprintf(stderr,"Running suite '%s'...\n",*name);
+          result2 = run_single_suite(suite, &f_run_summary);
+          //fprintf(stderr,"Suite results = %d\n",result2);
+          if(result2 != CUE_SUCCESS){
+            f_run_summary.nSuitesFailed++;
+          }/*else{
+            fprintf(stderr,"Suite result = success\n");
+          }*/
+          result = (CUE_SUCCESS == result) ? result2 : result;
+        }
+      }
+
+      if(result != CUE_SUCCESS && CU_get_error_action() != CUEA_IGNORE){
+        fprintf(stderr,"Aborting after '%s'\n",*name);
+        break;
+      }
+    }
+
+    /* test run is complete - clear flag */
+    f_bTestIsRunning = CU_FALSE;
+    f_run_summary.ElapsedTime = ((double)clock() - (double)f_start_time)/(double)CLOCKS_PER_SEC;
+
+    //fprintf(stderr,"Running overall completion handler...\n");
+    /* run handler for overall completion, if any */
+    if (NULL != f_pAllTestsCompleteMessageHandler) {
+      (*f_pAllTestsCompleteMessageHandler)(f_failure_list);
+    }
+  }
+
+  CU_set_error(result);
+  fprintf(stderr,"Final result code = %d\n",result);
+  return result;
+}
+
 
 /*------------------------------------------------------------------------*/
 CU_ErrorCode CU_run_suite(CU_pSuite pSuite)
@@ -889,7 +1304,9 @@ static CU_ErrorCode run_single_suite(CU_pSuite pSuite, CU_pRunSummary pRunSummar
       while ((NULL != pTest) && ((CUE_SUCCESS == result) || (CU_get_error_action() == CUEA_IGNORE))) {
         if (CU_FALSE != pTest->fActive) {
           result2 = run_single_test(pTest, pRunSummary);
+          //fprintf(stderr,"Test result = %d, (current flag = %d)\n",result2,result);
           result = (CUE_SUCCESS == result) ? result2 : result;
+          //fprintf(stderr,"(current flag = %d)\n",result);
         }
         else {
           f_run_summary.nTestsInactive++;
@@ -905,10 +1322,10 @@ static CU_ErrorCode run_single_suite(CU_pSuite pSuite, CU_pRunSummary pRunSummar
         pTest = pTest->pNext;
 
         if (CUE_SUCCESS == result) {
-          pSuite->uiNumberOfTestsFailed++;
+          pSuite->uiNumberOfTestsSuccess++;
         }
         else {
-          pSuite->uiNumberOfTestsSuccess++;
+          pSuite->uiNumberOfTestsFailed++;
         }
       }
       pRunSummary->nSuitesRun++;
@@ -987,6 +1404,8 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
   volatile CU_pFailureRecord pLastFailure = f_last_failure;
   jmp_buf buf;
   CU_ErrorCode result = CUE_SUCCESS;
+  int capture_enabled = 0;
+  int test_failed = 0;
 
   assert(NULL != f_pCurSuite);
   assert(CU_FALSE != f_pCurSuite->fActive);
@@ -1003,9 +1422,16 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
 
   /* run test if it is active */
   if (CU_FALSE != pTest->fActive) {
+    //fprintf(stderr,"active test...\n");
 
     if (NULL != f_pCurSuite->pSetUpFunc) {
       (*f_pCurSuite->pSetUpFunc)();
+    }
+
+    if(f_capture_test_output){
+      if(0 == cu_capture_start()){
+        capture_enabled = 1;
+      }
     }
 
     /* set jmp_buf and run test */
@@ -1032,22 +1458,28 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
   }
 
   /* if additional failures have occurred... */
-  if (pRunSummary->nFailureRecords > nStartFailures) {
+  if(pRunSummary->nFailureRecords > nStartFailures) {
+    //fprintf(stderr,"\nFound some failures...\n");
     pRunSummary->nTestsFailed++;
-    if (NULL != pLastFailure) {
+    test_failed = 1;
+    if(NULL != pLastFailure) {
       pLastFailure = pLastFailure->pNext;  /* was a previous failure, so go to next one */
-    }
-    else {
+    }else{
       pLastFailure = f_failure_list;       /* no previous failure - go to 1st one */
     }
-  }
-  else {
+  }else{
     pLastFailure = NULL;                   /* no additional failure - set to NULL */
   }
+  if(capture_enabled){
+    cu_capture_stop(test_failed ? 1 : 0);
+    capture_enabled = 0;
+  }
 
-  if (NULL != f_pTestCompleteMessageHandler) {
+  if(NULL != f_pTestCompleteMessageHandler) {
     (*f_pTestCompleteMessageHandler)(f_pCurTest, f_pCurSuite, pLastFailure);
   }
+
+  //fprintf(stderr,"Finished with 'test complete handler'\n");
 
   pTest->pJumpBuf = NULL;
   f_pCurTest = NULL;
