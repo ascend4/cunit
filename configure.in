@@ -235,9 +235,6 @@ AC_SUBST(CURSES_LIB)
 AC_SUBST(BUILD_EXAMPLES)
 AC_SUBST(BUILD_TEST)
 
-dnl Configure Jamrules for user environment
-AC_CONFIG_FILES([Jamrules:Jamrules.in])
-
 dnl Configure Makefile set.
 AC_CONFIG_FILES([Makefile
 		CUnit.spec
