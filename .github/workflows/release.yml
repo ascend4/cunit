@@ -50,7 +50,7 @@ jobs:
 
           echo "version_file=${version_file}" >> "${GITHUB_OUTPUT}"
           echo "pkg_version=${pkg_version}" >> "${GITHUB_OUTPUT}"
-          echo "dist_dir=CUnit-${version_file}" >> "${GITHUB_OUTPUT}"
+          echo "dist_dir=cunit-${version_file}" >> "${GITHUB_OUTPUT}"
           echo "dist_file=cunit-${version_file}" >> "${GITHUB_OUTPUT}"
 
   package:

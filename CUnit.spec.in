@@ -2,7 +2,7 @@ Summary:  A unit testing framework for 'C'
 Name:     @PACKAGE@
 Version:  @VERSION@
 Release:  @RELEASE@
-Source:   http://www.sourceforge.net/projects/cunit/@PACKAGE@-@VERSION@-@RELEASE@.tar.gz
+Source:   http://www.sourceforge.net/projects/cunit/cunit-@VERSION@-@RELEASE@.tar.gz
 Group:    Development/Tools
 License:  GPL
 URL:      http://cunit.sourceforge.net
@@ -15,7 +15,7 @@ headers, and documentation files.
 
 %prep
 echo "Preparing for Installation."
-%setup -q -n @PACKAGE@-@VERSION@-@RELEASE@
+%setup -q -n cunit-@VERSION@-@RELEASE@
 
 %build
 echo "Preparing for Building."
