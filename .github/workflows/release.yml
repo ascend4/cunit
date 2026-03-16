@@ -158,6 +158,11 @@ jobs:
       - test-package
 
     steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download release assets
         uses: actions/download-artifact@v4
         with:
@@ -167,9 +172,11 @@ jobs:
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           PKG_VERSION: ${{ needs.verify-version.outputs.pkg_version }}
         run: |
           gh release create "${GITHUB_REF_NAME}" \
+            --repo "${GH_REPO}" \
             --verify-tag \
             --generate-notes \
             --title "CUnit ${PKG_VERSION}" \
