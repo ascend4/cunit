@@ -48,3 +48,59 @@ jobs:
 
       - name: Install
         run: make install
+
+  coverage:
+    name: Coverage on ubuntu-24.04
+    runs-on: ubuntu-24.04
+    needs: build
+    env:
+      CFLAGS: --coverage -O0
+      LDFLAGS: --coverage
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf \
+            automake \
+            build-essential \
+            gcovr \
+            libtool
+
+      - name: Bootstrap
+        run: ./bootstrap
+
+      - name: Configure
+        run: ./configure --prefix="${RUNNER_TEMP}/cunit-install" --enable-debug --enable-test
+
+      - name: Build
+        run: make -j"$(nproc)"
+
+      - name: Run internal self-tests
+        run: |
+          ./CUnit/Sources/Test/test_cunit | tee test_cunit.log
+          grep -q "Failures: 0" test_cunit.log
+
+      - name: Generate coverage report
+        run: |
+          gcovr -r . \
+            --filter 'CUnit/Sources/' \
+            --exclude 'CUnit/Sources/Test/' \
+            --xml-pretty \
+            --print-summary \
+            -o coverage.xml
+
+      - name: Upload coverage to Codecov
+        if: ${{ secrets.CODECOV_TOKEN != '' }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: true
+          flags: cunit-internal
+          name: ubuntu-24.04-coverage
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
