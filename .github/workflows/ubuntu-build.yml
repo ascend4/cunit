@@ -1,0 +1,50 @@
+name: CUnit Ubuntu Build
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - ubuntu-24.04
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf \
+            automake \
+            build-essential \
+            libtool
+
+      - name: Bootstrap
+        run: ./bootstrap
+
+      - name: Configure
+        run: ./configure --prefix="${RUNNER_TEMP}/cunit-install" --enable-debug --enable-examples --enable-test
+
+      - name: Build
+        run: make -j"$(nproc)"
+
+      - name: Run internal self-tests
+        run: |
+          ./CUnit/Sources/Test/test_cunit | tee test_cunit.log
+          grep -q "Failures: 0" test_cunit.log
+
+      - name: Install
+        run: make install
