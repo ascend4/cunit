@@ -25,6 +25,25 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Verify VERSION matches PKGBUILD
+        id: version
+        shell: bash
+        run: |
+          version_file="$(tr -d '[:space:]' < VERSION)"
+          pkg_version="${version_file//-/.}"
+
+          if ! grep -Fq "_distver=\"${version_file}\"" packaging/msys2/PKGBUILD; then
+            echo "PKGBUILD _distver does not match VERSION (${version_file})" >&2
+            exit 1
+          fi
+
+          if ! grep -Eq "^pkgver=${pkg_version//./\\.}$" packaging/msys2/PKGBUILD; then
+            echo "PKGBUILD pkgver does not match VERSION (${pkg_version})" >&2
+            exit 1
+          fi
+
+          echo "dist_name=CUnit-${version_file}" >> "${GITHUB_OUTPUT}"
+
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -36,11 +55,14 @@ jobs:
             git
 
       - name: Create source tarball for PKGBUILD
+        env:
+          DIST_NAME: ${{ steps.version.outputs.dist_name }}
+        working-directory: packaging/msys2
         run: |
-          git archive \
+          git -C ../.. archive \
             --format=tar.gz \
-            --prefix=CUnit-2.1-3/ \
-            -o packaging/msys2/CUnit-2.1-3.tar.gz \
+            --prefix="${DIST_NAME}/" \
+            -o "${DIST_NAME}.tar.gz" \
             HEAD
 
       - name: Build package

@@ -81,11 +81,12 @@ jobs:
       - name: Create source tarball for PKGBUILD
         env:
           DIST_NAME: ${{ needs.verify-version.outputs.dist_name }}
+        working-directory: packaging/msys2
         run: |
-          git archive \
+          git -C ../.. archive \
             --format=tar.gz \
             --prefix="${DIST_NAME}/" \
-            -o "packaging/msys2/${DIST_NAME}.tar.gz" \
+            -o "${DIST_NAME}.tar.gz" \
             HEAD
 
       - name: Build package
