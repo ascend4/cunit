@@ -117,4 +117,7 @@ To publish a release:
 3. Create and push an annotated tag matching `VERSION`, such as `v2.1.3`.
 
 The release workflow publishes both a source tarball and the MSYS2 UCRT64
-`.pkg.tar.zst` package for the tagged commit.
+`.pkg.tar.zst` package for the tagged commit. The source tarball is named
+`cunit-<VERSION>.tar.gz` and extracts into `cunit-<VERSION>/`. Release
+tarballs are generated with `git archive`; the old manual `make tarball`
+path is intentionally disabled.

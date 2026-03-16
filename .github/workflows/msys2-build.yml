@@ -42,7 +42,7 @@ jobs:
             exit 1
           fi
 
-          echo "dist_dir=CUnit-${version_file}" >> "${GITHUB_OUTPUT}"
+          echo "dist_dir=cunit-${version_file}" >> "${GITHUB_OUTPUT}"
           echo "dist_file=cunit-${version_file}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up MSYS2
