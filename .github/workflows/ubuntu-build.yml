@@ -77,6 +77,9 @@ jobs:
       - name: Configure
         run: ./configure --prefix="${RUNNER_TEMP}/cunit-install" --enable-debug --enable-test
 
+      - name: Remove configure coverage artifacts
+        run: find . -type f \( -name '*.gcno' -o -name '*.gcda' \) -delete
+
       - name: Build
         run: make -j"$(nproc)"
 
