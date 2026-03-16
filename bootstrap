@@ -3,18 +3,19 @@ set -euo pipefail
 
 do_configure=0
 prefix="${HOME}/CUnitHome"
+configure_args=()
 
 usage() {
   cat <<'EOF'
-Usage: ./bootstrap [--configure] [--prefix PATH]
+Usage: ./bootstrap [--configure] [--prefix PATH] [-- CONFIGURE_ARGS...]
 
-Regenerates autotools files using autoreconf.
+Regenerates Autotools files using autoreconf.
 By default this does not run ./configure.
 
 Options:
   --configure      Run ./configure after autoreconf.
   --prefix PATH    Prefix used when --configure is set.
-  -h, --help       Show this help.
+  --help           Show this help.
 
 Backward compatibility:
   A single positional argument is treated as --prefix PATH and implies --configure.
@@ -36,16 +37,24 @@ while [ $# -gt 0 ]; do
       prefix="$1"
       shift
       ;;
-    -h|--help)
+    --help|-h)
       usage
       exit 0
       ;;
+    --)
+      shift
+      configure_args+=("$@")
+      break
+      ;;
+    -*)
+      echo "ERROR: unknown option '$1'." >&2
+      usage >&2
+      exit 1
+      ;;
     *)
-      if [ "$1" != "" ]; then
-        prefix="$1"
-        do_configure=1
-        shift
-      fi
+      prefix="$1"
+      do_configure=1
+      shift
       ;;
   esac
 done
@@ -55,15 +64,7 @@ autoreconf -fvi
 
 if [ "$do_configure" -eq 1 ]; then
   mkdir -p "$prefix"
-  ./configure \
-    --prefix="$prefix" \
-    --enable-debug \
-    --enable-memtrace \
-    --enable-automated \
-    --enable-basic \
-    --enable-console \
-    --enable-examples \
-    --enable-test
+  ./configure --srcdir="$(pwd)" --prefix="$prefix" "${configure_args[@]}"
 else
   echo
   echo "Bootstrap complete."
