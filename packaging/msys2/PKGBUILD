@@ -3,10 +3,10 @@
 _realname=cunit
 pkgbase=mingw-w64-${_realname}
 pkgname=("${MINGW_PACKAGE_PREFIX}-${_realname}")
-_distver="2.2-4"
+_distver="$(tr -d '[:space:]' < ../../VERSION)"
 _srcname="cunit"
 _distdir="${_srcname}-${_distver}"
-pkgver=2.2.4
+pkgver=${_distver//-/.}
 pkgrel=6
 pkgdesc="Lightweight system for writing, administering, and running unit tests in C (mingw-w64)"
 arch=('any')
@@ -23,7 +23,9 @@ prepare() {
   cd "${srcdir}/${_distdir}"
   patch -Np1 -i "${srcdir}/002-fix-shared.patch"
 
-  ./bootstrap
+  if [ ! -x ./configure ]; then
+    ./bootstrap
+  fi
 }
 
 build() {

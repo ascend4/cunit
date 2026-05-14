@@ -56,21 +56,31 @@
 (included automatically by &lt;<A HREF="headers/CUnit.h">CUnit/CUnit.h</A>&gt;)
 <PRE>
   unsigned int <A HREF="#results">CU_get_number_of_suites_run</A>(void)
+  unsigned int <A HREF="#results">CU_get_number_of_suites_selected</A>(void)
   unsigned int <A HREF="#results">CU_get_number_of_suites_failed</A>(void)
+  unsigned int <A HREF="#results">CU_get_number_of_suites_inactive</A>(void)
   unsigned int <A HREF="#results">CU_get_number_of_tests_run</A>(void)
+  unsigned int <A HREF="#results">CU_get_number_of_tests_selected</A>(void)
   unsigned int <A HREF="#results">CU_get_number_of_tests_failed</A>(void)
+  unsigned int <A HREF="#results">CU_get_number_of_tests_skipped</A>(void)
+  unsigned int <A HREF="#results">CU_get_number_of_tests_inactive</A>(void)
   unsigned int <A HREF="#results">CU_get_number_of_asserts</A>(void)
   unsigned int <A HREF="#results">CU_get_number_of_successes</A>(void)
   unsigned int <A HREF="#results">CU_get_number_of_failures</A>(void)
 
   typedef struct <A HREF="#results">CU_RunSummary</A>
-  typedef CU_Runsummary* <A HREF="#results">CU_pRunSummary</A>
-  const CU_pRunSummary <A HREF="#results">CU_get_run_summary</A>(void)
+  typedef CU_RunSummary* <A HREF="#results">CU_pRunSummary</A>
+  CU_pRunSummary <A HREF="#results">CU_get_run_summary</A>(void)
 
   typedef struct <A HREF="#results">CU_FailureRecord</A>
   typedef CU_FailureRecord*  <A HREF="#results">CU_pFailureRecord</A>
-  const CU_pFailureRecord <A HREF="#results">CU_get_failure_list</A>(void)
+  CU_pFailureRecord <A HREF="#results">CU_get_failure_list</A>(void)
   unsigned int <A HREF="#results">CU_get_number_of_failure_records</A>(void)
+
+  typedef struct <A HREF="#results">CU_SkipRecord</A>
+  typedef CU_SkipRecord*  <A HREF="#results">CU_pSkipRecord</A>
+  CU_pSkipRecord <A HREF="#results">CU_get_skip_list</A>(void)
+  CU_pSkipRecord <A HREF="#results">CU_get_current_test_skip_record</A>(void)
 
   void <A HREF="#modifying-inactive">CU_set_fail_on_inactive</A>(CU_BOOL new_inactive)
   CU_BOOL <A HREF="#modifying-inactive">CU_get_fail_on_inactive</A>(void)
@@ -80,7 +90,8 @@
 <H3 ID="overview">5.2. Running Tests in CUnit</H3>
 CUnit supports running all tests in all registered suites, but individual tests
 or suites can also be run.  During each run, the framework keeps track of the 
-number of suites, tests, and assertions run, passed, and failed.  Note that the
+number of suites and tests selected, run, skipped, inactive, passed, and failed,
+as well as the number of assertions passed and failed.  Note that the
 previous results are cleared each time a test run is initiated (even if it fails).
 Individual suites or tests can be <A HREF="managing_tests.html#activation">deactivated</A> 
 if the client wishes to exclude them from a particular test run.  However, it is
@@ -262,7 +273,8 @@ failures.</P>
 <H3 ID="results">5.8. Getting Test Results</H3>
 The interfaces present results of test runs, but client code may sometimes need
 to access the results directly.  These results include various run counts, as
-well as a linked list of failure records holding the failure details. Note that
+well as linked lists of failure and skip records holding the failure and skip
+details. Note that
 test results are overwritten each time a new test run is started, or when the
 registry is <A HREF="test_registry.html#init">initialized</A> or
 <A HREF="test_registry.html#cleanup">cleaned up</A>.
@@ -271,29 +283,38 @@ Functions for accessing the test results are:
 
 <P ID="results-counts" CLASS="indent2"><CITE>
   unsigned int <B>CU_get_number_of_suites_run</B>(void)<BR />
+  unsigned int <B>CU_get_number_of_suites_selected</B>(void)<BR />
   unsigned int <B>CU_get_number_of_suites_failed</B>(void)<BR />
+  unsigned int <B>CU_get_number_of_suites_inactive</B>(void)<BR />
   unsigned int <B>CU_get_number_of_tests_run</B>(void)<BR />
+  unsigned int <B>CU_get_number_of_tests_selected</B>(void)<BR />
   unsigned int <B>CU_get_number_of_tests_failed</B>(void)<BR />
+  unsigned int <B>CU_get_number_of_tests_skipped</B>(void)<BR />
+  unsigned int <B>CU_get_number_of_tests_inactive</B>(void)<BR />
   unsigned int <B>CU_get_number_of_asserts</B>(void)<BR />
   unsigned int <B>CU_get_number_of_successes</B>(void)<BR />
   unsigned int <B>CU_get_number_of_failures</B>(void)
 </CITE></P>                                                 
 <P CLASS="indent5">These functions report the number of suites, tests, and
-assertions that ran or failed during the last run.  A suite is considered failed
-if its initialization or cleanup function returned non-<CODE>NULL</CODE>, or if
-it was inactive and the framework was set to <A href="#modifying-inactive">treat
-inactive suites/tests as failures</A>.  A test fails if any of its assertions 
-failed or if it was inactive under the same conditions.  The last 3 functions 
-all refer to individual assertions.  An inactive suite (or test) is not counted
-among the number of suites (tests) run.  A consequence of this is that a suite
-(or test) can fail even though it is not reported as having been run.
+assertions selected, run, skipped, inactive, or failed during the last run.  A
+selected suite or test is one requested by the run operation before activation
+checks are applied.  An inactive suite or test is selected but disabled, and is
+not counted as run.  A skipped test is selected, active, and entered, but called
+<A HREF="writing_tests.html#skip">CU_SKIP</A> or
+<A HREF="writing_tests.html#skip">CU_SKIP_IF</A> before recording any failure.
+A skipped test is counted as run and skipped.  A suite is considered failed if
+its initialization or cleanup function returned non-zero, or if it was inactive
+and the framework was set to <A href="#modifying-inactive">treat inactive
+suites/tests as failures</A>.  A test fails if any of its assertions failed or
+if it was inactive under the same conditions.  The last 3 functions all refer to
+individual assertions.
 <BR /><BR />
 To retrieve the total number of registered suites and tests, use
 <A HREF="test_registry.html#stuct">CU_get_registry()&minus;&gt;uiNumberOfSuites</A>
 and <A HREF="test_registry.html#stuct">CU_get_registry()&minus;&gt;uiNumberOfTests</A>,
 respectively.</P>
 
-<P ID="results-getsummary" CLASS="indent2"><CITE>const CU_pRunSummary <B>CU_get_run_summary</B>(void)</CITE></P>
+<P ID="results-getsummary" CLASS="indent2"><CITE>CU_pRunSummary <B>CU_get_run_summary</B>(void)</CITE></P>
 <P CLASS="indent5">Retrieves all test result counts at once.  The return value is
 a pointer to a saved structure containing the counts.  This data type is defined in
 &lt;<A HREF="headers/TestRun.h">CUnit/TestRun.h</A>&gt; (included automatically by
@@ -302,24 +323,31 @@ a pointer to a saved structure containing the counts.  This data type is defined
 <PRE CLASS="indent10">
 typedef struct CU_RunSummary
 {
+  char PackageName[50];
   unsigned int nSuitesRun;
   unsigned int nSuitesFailed;
+  unsigned int nSuitesInactive;
   unsigned int nTestsRun;
   unsigned int nTestsFailed;
+  unsigned int nTestsInactive;
   unsigned int nAsserts;
   unsigned int nAssertsFailed;
   unsigned int nFailureRecords;
+  double       ElapsedTime;
+  unsigned int nSuitesSelected;
+  unsigned int nTestsSelected;
+  unsigned int nTestsSkipped;
 } <CITE><B>CU_RunSummary</B></CITE>;
 
 
-typedef CU_Runsummary* <CITE><B>CU_pRunSummary</B></CITE>;
+typedef CU_RunSummary* <CITE><B>CU_pRunSummary</B></CITE>;
 </PRE>
 <P CLASS="indent5">The structure variable associated with the returned pointer is owned
 by the framework, so the user should not free or otherwise change it.  <I>Note that the
 pointer may be invalidated once another test run is initiated.</I>
 </P>
 
-<P ID="results-getfailures" CLASS="indent2"><CITE>const CU_pFailureRecord <B>CU_get_failure_list</B>(void)</CITE></P>
+<P ID="results-getfailures" CLASS="indent2"><CITE>CU_pFailureRecord <B>CU_get_failure_list</B>(void)</CITE></P>
 <P CLASS="indent5">Retrieves a linked list recording any failures occurring during the
 last test run (<CODE>NULL</CODE> for no failures).  The data type of the return value
 is declared in &lt;<A HREF="headers/TestRun.h">CUnit/TestRun.h</A>&gt; (included
@@ -345,6 +373,41 @@ typedef CU_FailureRecord*  <CITE><B>CU_pFailureRecord</B></CITE>;
 <P CLASS="indent5">The structure variable associated with the returned pointer is owned
 by the framework, so the user should not free or otherwise change it.  <I>Note that the
 pointer may be invalidated once another test run is initiated.</I>
+</P>
+
+<P ID="results-getskips" CLASS="indent2"><CITE>
+  CU_pSkipRecord <B>CU_get_skip_list</B>(void)<BR />
+  CU_pSkipRecord <B>CU_get_current_test_skip_record</B>(void)
+</CITE></P>
+<P CLASS="indent5">Retrieves a linked list recording any tests that self-skipped
+during the last test run (<CODE>NULL</CODE> for no skipped tests).  The current
+test skip record accessor is intended for use from a test-complete message
+handler while the skipped test is being reported.  The data type of the return
+value is declared in &lt;<A HREF="headers/TestRun.h">CUnit/TestRun.h</A>&gt;
+(included automatically by &lt;<A HREF="headers/CUnit.h">CUnit/CUnit.h</A>&gt;).
+Each skip record contains information about the location and reason for the skip:
+</P>
+<PRE CLASS="indent10">
+typedef struct CU_SkipRecord
+{
+  unsigned int  uiLineNumber;
+  char*         strFileName;
+  char*         strReason;
+  CU_pTest      pTest;
+  CU_pSuite     pSuite;
+
+  struct CU_SkipRecord* pNext;
+  struct CU_SkipRecord* pPrev;
+
+} <CITE><B>CU_SkipRecord</B></CITE>;
+
+typedef CU_SkipRecord*  <CITE><B>CU_pSkipRecord</B></CITE>;
+</PRE>
+<P CLASS="indent5">The framework copies the skip reason passed to
+<CITE>CU_SKIP()</CITE> or <CITE>CU_SKIP_IF()</CITE>, so the caller may use a
+dynamically generated string.  The structure variable and its strings are owned
+by the framework, so the user should not free or otherwise change them.  <I>Note
+that the pointer may be invalidated once another test run is initiated.</I>
 </P>
 
 <P ID="results-failurecount" CLASS="indent2"><CITE>
@@ -404,4 +467,3 @@ To use these deprecated names, user code must be compiled with
 
 </BODY>
 </HTML>
-

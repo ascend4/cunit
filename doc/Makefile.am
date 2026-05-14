@@ -1,6 +1,6 @@
 ## Process this file with automake to produce Makefile.in
 
-doc_DATA = \
+dist_doc_DATA = \
 	CUnit_doc.css \
 	error_handling.html \
 	fdl.html \

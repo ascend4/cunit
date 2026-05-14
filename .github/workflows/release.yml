@@ -38,13 +38,19 @@ jobs:
             exit 1
           fi
 
-          if ! grep -Fq "_distver=\"${version_file}\"" packaging/msys2/PKGBUILD; then
-            echo "PKGBUILD _distver does not match VERSION (${version_file})" >&2
+          if ! grep -Fq '_distver="$(tr -d' packaging/msys2/PKGBUILD || \
+             ! grep -Fq '< ../../VERSION)' packaging/msys2/PKGBUILD; then
+            echo "PKGBUILD _distver is not read from VERSION" >&2
             exit 1
           fi
 
-          if ! grep -Eq "^pkgver=${pkg_version//./\\.}$" packaging/msys2/PKGBUILD; then
-            echo "PKGBUILD pkgver does not match VERSION (${pkg_version})" >&2
+          if ! grep -Fq 'pkgver=${_distver//-/.}' packaging/msys2/PKGBUILD; then
+            echo "PKGBUILD pkgver is not derived from _distver" >&2
+            exit 1
+          fi
+
+          if ! grep -Fq 'm4_esyscmd_s([cat VERSION])' configure.in; then
+            echo "configure.in does not read VERSION for AC_INIT" >&2
             exit 1
           fi
 
@@ -53,10 +59,53 @@ jobs:
           echo "dist_dir=cunit-${version_file}" >> "${GITHUB_OUTPUT}"
           echo "dist_file=cunit-${version_file}" >> "${GITHUB_OUTPUT}"
 
+  source-dist:
+    name: Build source dist
+    runs-on: ubuntu-latest
+    needs: verify-version
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            autoconf \
+            automake \
+            build-essential \
+            libtool
+
+      - name: Bootstrap
+        run: ./bootstrap --configure --prefix "${RUNNER_TEMP}/cunit-distcheck" -- --enable-debug --enable-test
+
+      - name: Build and check source dist
+        run: make distcheck DISTCHECK_CONFIGURE_FLAGS="--enable-debug --enable-test"
+
+      - name: Verify source dist contents
+        env:
+          DIST_FILE: ${{ needs.verify-version.outputs.dist_file }}
+        run: |
+          test -f "${DIST_FILE}.tar.gz"
+          tar -tzf "${DIST_FILE}.tar.gz" | grep -Fx "${DIST_FILE}/configure"
+          tar -tzf "${DIST_FILE}.tar.gz" | grep -Fx "${DIST_FILE}/Makefile.in"
+          tar -tzf "${DIST_FILE}.tar.gz" | grep -Fx "${DIST_FILE}/VERSION"
+          tar -tzf "${DIST_FILE}.tar.gz" | grep -Fx "${DIST_FILE}/README.md"
+
+      - name: Upload source dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: cunit-source-dist
+          path: ${{ needs.verify-version.outputs.dist_file }}.tar.gz
+          if-no-files-found: error
+
   package:
     name: Build release assets (UCRT64)
     runs-on: windows-latest
-    needs: verify-version
+    needs:
+      - verify-version
+      - source-dist
 
     defaults:
       run:
@@ -80,16 +129,11 @@ jobs:
             base-devel
             git
 
-      - name: Create source tarball for PKGBUILD
-        env:
-          DIST_DIR: ${{ needs.verify-version.outputs.dist_dir }}
-          DIST_FILE: ${{ needs.verify-version.outputs.dist_file }}
-        working-directory: packaging/msys2
-        run: |
-          git -C ../.. archive \
-            --format=tar.gz \
-            --prefix="${DIST_DIR}/" \
-            HEAD > "${DIST_FILE}.tar.gz"
+      - name: Download source dist for PKGBUILD
+        uses: actions/download-artifact@v4
+        with:
+          name: cunit-source-dist
+          path: packaging/msys2
 
       - name: Build package
         working-directory: packaging/msys2
@@ -158,6 +202,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - verify-version
+      - source-dist
       - test-package
 
     steps:

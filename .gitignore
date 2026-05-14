@@ -16,12 +16,17 @@ missing
 *.lo
 *.o
 *.la
+*.a
 **/Makefile
 **/.deps
 **/.libs
+doc/headers/*.h
 config.log
 CUnit.spec
 config.status
 cunit.pc
 config.h
 CUnit/Headers/CUnit.h
+CUnit*Dump.xml
+stamp-h1
+CUnit/Sources/Test/test_cunit

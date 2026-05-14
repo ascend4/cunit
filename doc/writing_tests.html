@@ -59,6 +59,14 @@ There is no opportunity for the test function to clean up after itself once a
 FATAL assertion fails.  The normal <A HREF="managing_tests.html#addsuite">suite 
 cleanup function</A> is not affected, however, and will be run in either case.
 <P />
+Tests may also mark themselves as skipped by calling <A HREF="#skip">CU_SKIP</A>
+or <A HREF="#skip">CU_SKIP_IF</A>.  These macros record a skip reason and return
+from the current <CODE>void test(void)</CODE> function.  This is useful when a
+test was selected and is active, but cannot complete because a local dependency,
+platform feature, or temporary precondition is missing.  A skipped test is counted
+as skipped only if no failure has already been recorded for that test; a test that
+has failed remains failed.
+<P />
 There are also special "assertions" for registering a 
 <A HREF="#pass">pass</A> or <A HREF="#fail">fail</A> with the framework 
 without performing a logical test.  These are useful for testing flow 
@@ -251,6 +259,18 @@ The assertions defined by CUnit are:
     </TD>
     <TD>
       Register a failed assertion with the specified message.  No logical test is performed.
+    </TD>
+  </TR>
+  <TR VALIGN="top" ID="skip">
+    <TD>
+      <CODE>
+        <CITE><B>CU_SKIP</B>(reason)</CITE><BR />
+        <CITE><B>CU_SKIP_IF</B>(condition, reason)</CITE>
+      </CODE>
+    </TD>
+    <TD>
+      Record the current test as skipped, copy the reason string, and return from the test
+      function.  If the test has already recorded a failure, it remains failed.
     </TD>
   </TR>
 </TABLE>

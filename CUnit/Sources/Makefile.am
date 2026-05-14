@@ -63,6 +63,10 @@ TEST_OBJECTS = $(TEST_OBJECT_FILES)
 
 SUBDIRS = $(COMPILE_DIRS)
 
+EXTRA_DIST = \
+	Win/Win.c \
+	Win/Win.h \
+	Win/resource.h
 
 lib_LTLIBRARIES = libcunit.la
 libcunit_la_SOURCES = 

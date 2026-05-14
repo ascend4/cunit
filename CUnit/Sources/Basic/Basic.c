@@ -300,12 +300,21 @@ static void basic_test_complete_message_handler(const CU_pTest pTest,
                                                 const CU_pFailureRecord pFailureList)
 {
   CU_pFailureRecord pFailure = pFailureList;
+  CU_pSkipRecord pSkip = CU_get_current_test_skip_record();
   int i;
 
   assert(NULL != pSuite);
   assert(NULL != pTest);
 
-  if (NULL == pFailure) {
+  if (NULL != pSkip) {
+    if (CU_BRM_VERBOSE == f_run_mode) {
+      fprintf(stdout, _("skipped"));
+      if ((NULL != pSkip->strReason) && ('\0' != pSkip->strReason[0])) {
+        fprintf(stdout, _(" (%s)"), pSkip->strReason);
+      }
+    }
+  }
+  else if (NULL == pFailure) {
     if (CU_BRM_VERBOSE == f_run_mode) {
       fprintf(stdout, _("passed"));
     }

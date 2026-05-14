@@ -17,6 +17,11 @@ conventional structure of test cases bundled into suites which are registered
 with the framework for running. See the documentation for more about the
 structure and use of the framework.
 
+Tests can self-skip at runtime with `CU_SKIP(reason)` or
+`CU_SKIP_IF(condition, reason)`. Skip reasons are copied by the framework and
+reported separately from inactive tests; if a test has already recorded a
+failure, it remains failed rather than skipped.
+
 Note: the Windows-specific GUI interface is not yet written. It is still
 necessary to use either the automated, basic, or console interfaces to CUnit
 on Windows at this time.
@@ -118,6 +123,7 @@ To publish a release:
 
 The release workflow publishes both a source tarball and the MSYS2 UCRT64
 `.pkg.tar.zst` package for the tagged commit. The source tarball is named
-`cunit-<VERSION>.tar.gz` and extracts into `cunit-<VERSION>/`. Release
-tarballs are generated with `git archive`; the old manual `make tarball`
-path is intentionally disabled.
+`cunit-<VERSION>.tar.gz`, extracts into `cunit-<VERSION>/`, and is generated
+with Automake `make distcheck`, so it includes `configure` and the generated
+`Makefile.in` files. Building directly from a git checkout still requires
+`./bootstrap` before `./configure`.

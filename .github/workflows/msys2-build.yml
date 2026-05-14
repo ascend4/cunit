@@ -32,13 +32,14 @@ jobs:
           version_file="$(tr -d '[:space:]' < VERSION)"
           pkg_version="${version_file//-/.}"
 
-          if ! grep -Fq "_distver=\"${version_file}\"" packaging/msys2/PKGBUILD; then
-            echo "PKGBUILD _distver does not match VERSION (${version_file})" >&2
+          if ! grep -Fq '_distver="$(tr -d' packaging/msys2/PKGBUILD || \
+             ! grep -Fq '< ../../VERSION)' packaging/msys2/PKGBUILD; then
+            echo "PKGBUILD _distver is not read from VERSION" >&2
             exit 1
           fi
 
-          if ! grep -Eq "^pkgver=${pkg_version//./\\.}$" packaging/msys2/PKGBUILD; then
-            echo "PKGBUILD pkgver does not match VERSION (${pkg_version})" >&2
+          if ! grep -Fq 'pkgver=${_distver//-/.}' packaging/msys2/PKGBUILD; then
+            echo "PKGBUILD pkgver is not derived from _distver" >&2
             exit 1
           fi
 
