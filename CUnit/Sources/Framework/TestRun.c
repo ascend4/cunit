@@ -2086,6 +2086,13 @@ static void test_skip_dynamic(void)
 static void test_skip_if_true(void) { CU_SKIP_IF(CU_TRUE, "skip-if reason"); }
 static void test_skip_if_false(void) { CU_SKIP_IF(CU_FALSE, "should not skip"); CU_TEST(CU_TRUE); }
 static void test_fail_then_skip(void) { CU_TEST(CU_FALSE); CU_SKIP("ignored after failure"); }
+static void test_skip_null_reason(void) { CU_SKIP(NULL); }
+static void test_skip_empty_reason(void) { CU_SKIP(""); }
+static void test_skip_twice(void)
+{
+  CU_skipImplementation(__LINE__, __FILE__, "first skip reason");
+  CU_skipImplementation(__LINE__, __FILE__, "second skip reason");
+}
 static int suite_succeed(void) { return 0; }
 static int suite_fail(void) { return 1; }
 
@@ -2096,6 +2103,38 @@ static void test_fail_if_not_setup(void) { CU_TEST(SetUp_Passed); }
 
 static void suite_setup(void) { SetUp_Passed = CU_TRUE; }
 static void suite_teardown(void) { SetUp_Passed = CU_FALSE; }
+static void suite_teardown_fail(void) { CU_TEST(CU_FALSE); }
+
+static CU_pSuite f_expected_skip_record_suite = NULL;
+static CU_pTest f_expected_skip_record_test = NULL;
+static const char *f_expected_skip_record_reason = NULL;
+static unsigned int f_nSkipRecordHandlerCalls = 0;
+
+static void skip_record_test_complete_handler(const CU_pTest pTest,
+                                              const CU_pSuite pSuite,
+                                              const CU_pFailureRecord pFailure)
+{
+  CU_pSkipRecord pSkip = CU_get_current_test_skip_record();
+
+  TEST(NULL == pFailure);
+  TEST(f_expected_skip_record_suite == pSuite);
+  TEST(f_expected_skip_record_test == pTest);
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest == pSkip->pTest);
+    if (NULL == f_expected_skip_record_reason) {
+      TEST(NULL == pSkip->strReason);
+    }
+    else {
+      TEST(NULL != pSkip->strReason);
+      if (NULL != pSkip->strReason) {
+        TEST(!strcmp(f_expected_skip_record_reason, pSkip->strReason));
+      }
+    }
+  }
+  ++f_nSkipRecordHandlerCalls;
+}
 
 
 /*-------------------------------------------------*/
@@ -2376,11 +2415,17 @@ static void test_message_handlers(void)
 static void test_CU_skip(void)
 {
   CU_pSuite pSuite = NULL;
+  CU_pSuite pTeardownSuite = NULL;
   CU_pTest pTest1 = NULL;
   CU_pTest pTest2 = NULL;
   CU_pTest pTest3 = NULL;
   CU_pTest pTest5 = NULL;
+  CU_pTest pTest6 = NULL;
+  CU_pTest pTest7 = NULL;
+  CU_pTest pTest8 = NULL;
+  CU_pTest pTeardownTest = NULL;
   CU_pSkipRecord pSkip = NULL;
+  CU_pSkipRecord pPrevSkip = NULL;
 
   CU_set_error_action(CUEA_IGNORE);
   CU_initialize_registry();
@@ -2391,14 +2436,17 @@ static void test_CU_skip(void)
   pTest3 = CU_add_test(pSuite, "skip_if_true", test_skip_if_true);
   CU_add_test(pSuite, "skip_if_false", test_skip_if_false);
   pTest5 = CU_add_test(pSuite, "fail_then_skip", test_fail_then_skip);
+  pTest6 = CU_add_test(pSuite, "skip_null_reason", test_skip_null_reason);
+  pTest7 = CU_add_test(pSuite, "skip_empty_reason", test_skip_empty_reason);
+  pTest8 = CU_add_test(pSuite, "skip_twice", test_skip_twice);
 
   TEST_FATAL(CUE_SUCCESS == CU_get_error());
   TEST(CUE_SUCCESS == CU_run_suite(pSuite));
 
   TEST(1 == CU_get_number_of_suites_selected());
-  TEST(5 == CU_get_number_of_tests_selected());
-  TEST(5 == CU_get_number_of_tests_run());
-  TEST(3 == CU_get_number_of_tests_skipped());
+  TEST(8 == CU_get_number_of_tests_selected());
+  TEST(8 == CU_get_number_of_tests_run());
+  TEST(6 == CU_get_number_of_tests_skipped());
   TEST(1 == CU_get_number_of_tests_failed());
   TEST(0 == CU_get_number_of_tests_inactive());
   TEST(2 == CU_get_number_of_asserts());
@@ -2412,7 +2460,9 @@ static void test_CU_skip(void)
     TEST(pTest1 == pSkip->pTest);
     TEST(NULL != pSkip->strReason);
     TEST(!strcmp("static skip reason", pSkip->strReason));
+    TEST(NULL == pSkip->pPrev);
     TEST(NULL != pSkip->pNext);
+    pPrevSkip = pSkip;
   }
 
   if (NULL != pSkip) {
@@ -2424,7 +2474,9 @@ static void test_CU_skip(void)
     TEST(pTest2 == pSkip->pTest);
     TEST(NULL != pSkip->strReason);
     TEST(!strcmp("dynamic skip reason 42", pSkip->strReason));
+    TEST(pPrevSkip == pSkip->pPrev);
     TEST(NULL != pSkip->pNext);
+    pPrevSkip = pSkip;
   }
 
   if (NULL != pSkip) {
@@ -2436,6 +2488,50 @@ static void test_CU_skip(void)
     TEST(pTest3 == pSkip->pTest);
     TEST(NULL != pSkip->strReason);
     TEST(!strcmp("skip-if reason", pSkip->strReason));
+    TEST(pPrevSkip == pSkip->pPrev);
+    TEST(NULL != pSkip->pNext);
+    pPrevSkip = pSkip;
+  }
+
+  if (NULL != pSkip) {
+    pSkip = pSkip->pNext;
+  }
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest6 == pSkip->pTest);
+    TEST(NULL == pSkip->strReason);
+    TEST(pPrevSkip == pSkip->pPrev);
+    TEST(NULL != pSkip->pNext);
+    pPrevSkip = pSkip;
+  }
+
+  if (NULL != pSkip) {
+    pSkip = pSkip->pNext;
+  }
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest7 == pSkip->pTest);
+    TEST(NULL != pSkip->strReason);
+    if (NULL != pSkip->strReason) {
+      TEST('\0' == pSkip->strReason[0]);
+    }
+    TEST(pPrevSkip == pSkip->pPrev);
+    TEST(NULL != pSkip->pNext);
+    pPrevSkip = pSkip;
+  }
+
+  if (NULL != pSkip) {
+    pSkip = pSkip->pNext;
+  }
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest8 == pSkip->pTest);
+    TEST(NULL != pSkip->strReason);
+    TEST(!strcmp("first skip reason", pSkip->strReason));
+    TEST(pPrevSkip == pSkip->pPrev);
     TEST(NULL == pSkip->pNext);
   }
 
@@ -2444,6 +2540,36 @@ static void test_CU_skip(void)
   TEST(1 == CU_get_number_of_tests_run());
   TEST(0 == CU_get_number_of_tests_skipped());
   TEST(1 == CU_get_number_of_tests_failed());
+  TEST(NULL == CU_get_skip_list());
+
+  f_expected_skip_record_suite = pSuite;
+  f_expected_skip_record_test = pTest2;
+  f_expected_skip_record_reason = "dynamic skip reason 42";
+  f_nSkipRecordHandlerCalls = 0;
+  CU_set_test_complete_handler(skip_record_test_complete_handler);
+  TEST(CUE_SUCCESS == CU_run_test(pSuite, pTest2));
+  TEST(1 == f_nSkipRecordHandlerCalls);
+  TEST(1 == CU_get_number_of_tests_skipped());
+  CU_set_test_complete_handler(NULL);
+  f_expected_skip_record_suite = NULL;
+  f_expected_skip_record_test = NULL;
+  f_expected_skip_record_reason = NULL;
+
+  pTeardownSuite = CU_add_suite_with_setup_and_teardown("skip_teardown_fail_suite",
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        suite_teardown_fail);
+  pTeardownTest = CU_add_test(pTeardownSuite, "skip_then_teardown_fails", test_skip_static);
+  TEST_FATAL(CUE_SUCCESS == CU_get_error());
+  TEST(CUE_SUCCESS == CU_run_test(pTeardownSuite, pTeardownTest));
+  TEST(1 == CU_get_number_of_tests_selected());
+  TEST(1 == CU_get_number_of_tests_run());
+  TEST(0 == CU_get_number_of_tests_skipped());
+  TEST(1 == CU_get_number_of_tests_failed());
+  TEST(1 == CU_get_number_of_asserts());
+  TEST(1 == CU_get_number_of_failures());
+  TEST(1 == CU_get_number_of_failure_records());
   TEST(NULL == CU_get_skip_list());
 
   CU_cleanup_registry();
