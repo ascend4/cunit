@@ -113,17 +113,36 @@ typedef struct CU_RunSummary
 {
   char PackageName[50];
   unsigned int nSuitesRun;        /**< Number of suites completed during run. */
-  unsigned int nSuitesFailed;     /**< Number of suites for which initialization failed. */
+  unsigned int nSuitesFailed;     /**< Number of suites which failed during run. */
   unsigned int nSuitesInactive;   /**< Number of suites which were inactive. */
-  unsigned int nTestsRun;         /**< Number of tests completed during run. */
-  unsigned int nTestsFailed;      /**< Number of tests containing failed assertions. */
-  unsigned int nTestsInactive;    /**< Number of tests which were inactive (in active suites). */
+  unsigned int nTestsRun;         /**< Number of selected active tests entered during run. */
+  unsigned int nTestsFailed;      /**< Number of tests which failed during run. */
+  unsigned int nTestsInactive;    /**< Number of selected tests which were inactive. */
   unsigned int nAsserts;          /**< Number of assertions tested during run. */
   unsigned int nAssertsFailed;    /**< Number of failed assertions. */
   unsigned int nFailureRecords;   /**< Number of failure records generated. */
   double       ElapsedTime;       /**< Elapsed time for run in seconds. */
+  unsigned int nSuitesSelected;   /**< Number of suites selected for the run. */
+  unsigned int nTestsSelected;    /**< Number of tests selected for the run. */
+  unsigned int nTestsSkipped;     /**< Number of tests which self-skipped during the run. */
 } CU_RunSummary;
 typedef CU_RunSummary* CU_pRunSummary;  /**< Pointer to CU_RunSummary. */
+
+/* CU_SkipRecord type definition. */
+/** Data type for holding test skip information (linked list). */
+typedef struct CU_SkipRecord
+{
+  unsigned int    uiLineNumber;   /**< Line number of skip request. */
+  char*           strFileName;    /**< Name of file where skip occurred. */
+  char*           strReason;      /**< Reason for skipping the test. */
+  CU_pTest        pTest;          /**< Test which skipped. */
+  CU_pSuite       pSuite;         /**< Suite containing skipped test. */
+
+  struct CU_SkipRecord* pNext;    /**< Pointer to next record in linked list. */
+  struct CU_SkipRecord* pPrev;    /**< Pointer to previous record in linked list. */
+
+} CU_SkipRecord;
+typedef CU_SkipRecord* CU_pSkipRecord;  /**< Pointer to CU_SkipRecord. */
 
 /*--------------------------------------------------------------------
  * Type Definitions for Message Handlers.
@@ -357,14 +376,20 @@ CU_EXPORT CU_BOOL CU_get_fail_on_inactive(void);
  *--------------------------------------------------------------------*/
 CU_EXPORT unsigned int CU_get_number_of_suites_run(void);
 /**< Retrieves the number of suites completed during the previous run (reset each run). */
+CU_EXPORT unsigned int CU_get_number_of_suites_selected(void);
+/**< Retrieves the number of suites selected during the previous run (reset each run). */
 CU_EXPORT unsigned int CU_get_number_of_suites_failed(void);
-/**< Retrieves the number of suites which failed to initialize during the previous run (reset each run). */
+/**< Retrieves the number of suites which failed during the previous run (reset each run). */
 CU_EXPORT unsigned int CU_get_number_of_suites_inactive(void);
 /**< Retrieves the number of inactive suites found during the previous run (reset each run). */
 CU_EXPORT unsigned int CU_get_number_of_tests_run(void);
-/**< Retrieves the number of tests completed during the previous run (reset each run). */
+/**< Retrieves the number of selected active tests entered during the previous run (reset each run). */
+CU_EXPORT unsigned int CU_get_number_of_tests_selected(void);
+/**< Retrieves the number of tests selected during the previous run (reset each run). */
 CU_EXPORT unsigned int CU_get_number_of_tests_failed(void);
-/**< Retrieves the number of tests containing failed assertions during the previous run (reset each run). */
+/**< Retrieves the number of tests which failed during the previous run (reset each run). */
+CU_EXPORT unsigned int CU_get_number_of_tests_skipped(void);
+/**< Retrieves the number of tests which self-skipped during the previous run (reset each run). */
 CU_EXPORT unsigned int CU_get_number_of_tests_inactive(void);
 /**< Retrieves the number of inactive tests found during the previous run (reset each run). */
 CU_EXPORT unsigned int CU_get_number_of_asserts(void);
@@ -393,6 +418,19 @@ CU_EXPORT CU_pFailureRecord CU_get_failure_list(void);
  *  last run (reset each run).  Note that the pointer returned is invalidated
  *  when the client initiates a run using CU_run_all_tests(), CU_run_suite(),
  *  or CU_run_test().
+ */
+CU_EXPORT CU_pSkipRecord CU_get_skip_list(void);
+/**<
+ *  Retrieves the head of the linked list of tests which self-skipped during
+ *  the last run (reset each run).  Note that the pointer returned is
+ *  invalidated when the client initiates a run using CU_run_all_tests(),
+ *  CU_run_suite(), or CU_run_test().
+ */
+CU_EXPORT CU_pSkipRecord CU_get_current_test_skip_record(void);
+/**<
+ *  Retrieves the skip record for the currently completing test, or NULL if
+ *  the current test did not self-skip.  This is intended for use from a
+ *  test-complete message handler.
  */
 CU_EXPORT CU_pRunSummary CU_get_run_summary(void);
 /**<
@@ -471,6 +509,21 @@ CU_EXPORT CU_BOOL CU_assertImplementation(CU_BOOL bValue,
  *  @param strFunction   Function where test statement failed.
  *  @param bFatal        CU_TRUE to abort test (via longjmp()), CU_FALSE to continue test.
  *  @return As a convenience, returns the value of the assertion (i.e. bValue).
+ */
+
+CU_EXPORT void CU_skipImplementation(unsigned int uiLine,
+                                     const char *strFile,
+                                     const char *strReason);
+/**<
+ *  Runtime skip implementation function.
+ *  CU_SKIP and CU_SKIP_IF reduce to a call to this function followed by a
+ *  return from the current test function.  It should only be called during
+ *  an active test run (checked by assertion).  The skip reason is copied
+ *  by CUnit, so callers may pass dynamically generated strings.
+ *
+ *  @param uiLine      Line number of skip request.
+ *  @param strFile     Source file where skip request occurred.
+ *  @param strReason   Reason for skipping the test, or NULL.
  */
 
 #ifdef USE_DEPRECATED_CUNIT_NAMES

@@ -1,2 +1,6 @@
-The latest release for this package can be download from the projects 
+The latest release for this package can be downloaded from the project's
 home page located at http://www.sourceforge.net/projects/cunit/ .
+
+Runtime test skipping is supported with CU_SKIP(reason) and
+CU_SKIP_IF(condition, reason).  Skip reasons are copied by the framework and
+reported separately from inactive tests.

@@ -318,6 +318,7 @@ static void automated_test_complete_message_handler(const CU_pTest pTest,
   size_t szTemp_len = 0;
   size_t cur_len = 0;
   CU_pFailureRecord pTempFailure = pFailure;
+  CU_pSkipRecord pSkip = CU_get_current_test_skip_record();
   const char *pPackageName = CU_automated_package_name_get();
 
   CU_UNREFERENCED_PARAMETER(pSuite);  /* pSuite is not used except in assertion */
@@ -405,6 +406,52 @@ static void automated_test_complete_message_handler(const CU_pTest pTest,
       fprintf(f_pTestResultFile, "        </testcase>\n");
     } /* if */
   }
+  else if (NULL != pSkip) {
+    if (NULL != pSkip->strReason) {
+      szTemp_len = CU_translated_strlen(pSkip->strReason) + 1;
+      szTemp = (char *)CU_MALLOC(szTemp_len);
+      if (NULL != szTemp) {
+        CU_translate_special_characters(pSkip->strReason, szTemp, szTemp_len);
+      }
+    }
+
+    if (bJUnitXmlOutput == CU_TRUE) {
+      if ((NULL != szTemp) && ('\0' != szTemp[0])) {
+        fprintf(f_pTestResultFile,  "        <testcase classname=\"%s.%s\" name=\"%s\" time=\"0\"><skipped message=\"%s\"/></testcase>\n",
+                pPackageName,
+                pSuite->pName,
+                (NULL != pTest->pName) ? pTest->pName : "",
+                szTemp);
+      }
+      else {
+        fprintf(f_pTestResultFile,  "        <testcase classname=\"%s.%s\" name=\"%s\" time=\"0\"><skipped/></testcase>\n",
+                pPackageName,
+                pSuite->pName,
+                (NULL != pTest->pName) ? pTest->pName : "");
+      }
+    } else {
+      if ((NULL != szTemp) && ('\0' != szTemp[0])) {
+        fprintf(f_pTestResultFile,
+                "        <CUNIT_RUN_TEST_RECORD> \n"
+                "          <CUNIT_RUN_TEST_SKIPPED> \n"
+                "            <TEST_NAME> %s </TEST_NAME> \n"
+                "            <SKIP_REASON> %s </SKIP_REASON> \n"
+                "          </CUNIT_RUN_TEST_SKIPPED> \n"
+                "        </CUNIT_RUN_TEST_RECORD> \n",
+                pTest->pName,
+                szTemp);
+      }
+      else {
+        fprintf(f_pTestResultFile,
+                "        <CUNIT_RUN_TEST_RECORD> \n"
+                "          <CUNIT_RUN_TEST_SKIPPED> \n"
+                "            <TEST_NAME> %s </TEST_NAME> \n"
+                "          </CUNIT_RUN_TEST_SKIPPED> \n"
+                "        </CUNIT_RUN_TEST_RECORD> \n",
+                pTest->pName);
+      }
+    }
+  }
   else {
     if (bJUnitXmlOutput == CU_TRUE) {
       fprintf(f_pTestResultFile,  "        <testcase classname=\"%s.%s\" name=\"%s\" time=\"0\"/>\n",
@@ -468,12 +515,17 @@ static void automated_all_tests_complete_message_handler(const CU_pFailureRecord
 {
   CU_pTestRegistry pRegistry = CU_get_registry();
   CU_pRunSummary pRunSummary = CU_get_run_summary();
+  unsigned int nTestsPassed = 0;
 
   CU_UNREFERENCED_PARAMETER(pFailure);  /* not used */
 
   assert(NULL != pRegistry);
   assert(NULL != pRunSummary);
   assert(NULL != f_pTestResultFile);
+
+  if (pRunSummary->nTestsRun >= pRunSummary->nTestsFailed + pRunSummary->nTestsSkipped) {
+    nTestsPassed = pRunSummary->nTestsRun - pRunSummary->nTestsFailed - pRunSummary->nTestsSkipped;
+  }
 
   if ((NULL != f_pRunningSuite) && (CU_TRUE == f_bWriting_CUNIT_RUN_SUITE)) {
     if (bJUnitXmlOutput == CU_FALSE) {
@@ -492,13 +544,16 @@ static void automated_all_tests_complete_message_handler(const CU_pFailureRecord
             "    <CUNIT_RUN_SUMMARY_RECORD> \n"
             "      <TYPE> %s </TYPE> \n"
             "      <TOTAL> %u </TOTAL> \n"
+            "      <SELECTED> %u </SELECTED> \n"
             "      <RUN> %u </RUN> \n"
             "      <SUCCEEDED> - NA - </SUCCEEDED> \n"
             "      <FAILED> %u </FAILED> \n"
+            "      <SKIPPED> - NA - </SKIPPED> \n"
             "      <INACTIVE> %u </INACTIVE> \n"
             "    </CUNIT_RUN_SUMMARY_RECORD> \n",
             _("Suites"),
             pRegistry->uiNumberOfSuites,
+            pRunSummary->nSuitesSelected,
             pRunSummary->nSuitesRun,
             pRunSummary->nSuitesFailed,
             pRunSummary->nSuitesInactive);
@@ -507,33 +562,41 @@ static void automated_all_tests_complete_message_handler(const CU_pFailureRecord
             "    <CUNIT_RUN_SUMMARY_RECORD> \n"
             "      <TYPE> %s </TYPE> \n"
             "      <TOTAL> %u </TOTAL> \n"
+            "      <SELECTED> %u </SELECTED> \n"
             "      <RUN> %u </RUN> \n"
             "      <SUCCEEDED> %u </SUCCEEDED> \n"
             "      <FAILED> %u </FAILED> \n"
+            "      <SKIPPED> %u </SKIPPED> \n"
             "      <INACTIVE> %u </INACTIVE> \n"
             "    </CUNIT_RUN_SUMMARY_RECORD> \n",
             _("Test Cases"),
             pRegistry->uiNumberOfTests,
+            pRunSummary->nTestsSelected,
             pRunSummary->nTestsRun,
-            pRunSummary->nTestsRun - pRunSummary->nTestsFailed,
+            nTestsPassed,
             pRunSummary->nTestsFailed,
+            pRunSummary->nTestsSkipped,
             pRunSummary->nTestsInactive);
 
     fprintf(f_pTestResultFile,
             "    <CUNIT_RUN_SUMMARY_RECORD> \n"
             "      <TYPE> %s </TYPE> \n"
             "      <TOTAL> %u </TOTAL> \n"
+            "      <SELECTED> %s </SELECTED> \n"
             "      <RUN> %u </RUN> \n"
             "      <SUCCEEDED> %u </SUCCEEDED> \n"
             "      <FAILED> %u </FAILED> \n"
+            "      <SKIPPED> %s </SKIPPED> \n"
             "      <INACTIVE> %s </INACTIVE> \n"
             "    </CUNIT_RUN_SUMMARY_RECORD> \n"
             "  </CUNIT_RUN_SUMMARY> \n",
             _("Assertions"),
             pRunSummary->nAsserts,
+            _("n/a"),
             pRunSummary->nAsserts,
             pRunSummary->nAsserts - pRunSummary->nAssertsFailed,
             pRunSummary->nAssertsFailed,
+            _("n/a"),
             _("n/a"));
     }
 }

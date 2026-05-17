@@ -96,13 +96,25 @@ static CU_pSuite f_pCurSuite = NULL;          /**< Pointer to the suite currentl
 static CU_pTest  f_pCurTest  = NULL;          /**< Pointer to the test currently being run. */
 
 /** CU_RunSummary to hold results of each test run. */
-static CU_RunSummary f_run_summary = {"", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static CU_RunSummary f_run_summary = {"", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 /** CU_pFailureRecord to hold head of failure record list of each test run. */
 static CU_pFailureRecord f_failure_list = NULL;
 
 /** CU_pFailureRecord to hold head of failure record list of each test run. */
 static CU_pFailureRecord f_last_failure = NULL;
+
+/** CU_pSkipRecord to hold head of skip record list of each test run. */
+static CU_pSkipRecord f_skip_list = NULL;
+
+/** CU_pSkipRecord to hold the skip record for the current test. */
+static CU_pSkipRecord f_current_skip = NULL;
+
+/** Flag for whether the current test requested a runtime skip. */
+static CU_BOOL f_current_test_skipped = CU_FALSE;
+
+/** Number of failures present when the current test started. */
+static unsigned int f_current_test_start_failures = 0;
 
 /** Flag for whether inactive suites/tests are treated as failures. */
 static CU_BOOL f_failure_on_inactive = CU_TRUE;
@@ -419,6 +431,14 @@ static void cu_capture_stop(int dump){
  *=================================================================*/
 static void         clear_previous_results(CU_pRunSummary pRunSummary, CU_pFailureRecord* ppFailure);
 static void         cleanup_failure_list(CU_pFailureRecord* ppFailure);
+static void         cleanup_skip_list(CU_pSkipRecord* ppSkip);
+static void         add_skip(CU_pSkipRecord* ppSkip,
+                             unsigned int uiLineNumber,
+                             const char *szFileName,
+                             const char *szReason,
+                             CU_pSuite pSuite,
+                             CU_pTest pTest);
+static void         remove_skip(CU_pSkipRecord* ppSkip, CU_pSkipRecord pSkip);
 static CU_ErrorCode run_single_suite(CU_pSuite pSuite, CU_pRunSummary pRunSummary);
 static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary);
 static void         add_failure(CU_pFailureRecord* ppFailure,
@@ -459,6 +479,21 @@ CU_BOOL CU_assertImplementation(CU_BOOL bValue,
   }
 
   return bValue;
+}
+
+/*------------------------------------------------------------------------*/
+void CU_skipImplementation(unsigned int uiLine,
+                           const char *strFile,
+                           const char *strReason)
+{
+  assert(NULL != f_pCurSuite);
+  assert(NULL != f_pCurTest);
+
+  if ((NULL == f_current_skip) &&
+      (f_run_summary.nFailureRecords == f_current_test_start_failures)) {
+    f_current_test_skipped = CU_TRUE;
+    add_skip(&f_skip_list, uiLine, strFile, strReason, f_pCurSuite, f_pCurTest);
+  }
 }
 
 /*------------------------------------------------------------------------*/
@@ -569,6 +604,12 @@ unsigned int CU_get_number_of_suites_run(void)
 }
 
 /*------------------------------------------------------------------------*/
+unsigned int CU_get_number_of_suites_selected(void)
+{
+  return f_run_summary.nSuitesSelected;
+}
+
+/*------------------------------------------------------------------------*/
 unsigned int CU_get_number_of_suites_failed(void)
 {
   return f_run_summary.nSuitesFailed;
@@ -587,9 +628,21 @@ unsigned int CU_get_number_of_tests_run(void)
 }
 
 /*------------------------------------------------------------------------*/
+unsigned int CU_get_number_of_tests_selected(void)
+{
+  return f_run_summary.nTestsSelected;
+}
+
+/*------------------------------------------------------------------------*/
 unsigned int CU_get_number_of_tests_failed(void)
 {
   return f_run_summary.nTestsFailed;
+}
+
+/*------------------------------------------------------------------------*/
+unsigned int CU_get_number_of_tests_skipped(void)
+{
+  return f_run_summary.nTestsSkipped;
 }
 
 /*------------------------------------------------------------------------*/
@@ -637,6 +690,18 @@ double CU_get_elapsed_time(void)
 CU_pFailureRecord CU_get_failure_list(void)
 {
   return f_failure_list;
+}
+
+/*------------------------------------------------------------------------*/
+CU_pSkipRecord CU_get_skip_list(void)
+{
+  return f_skip_list;
+}
+
+/*------------------------------------------------------------------------*/
+CU_pSkipRecord CU_get_current_test_skip_record(void)
+{
+  return f_current_skip;
 }
 
 /*------------------------------------------------------------------------*/
@@ -723,7 +788,10 @@ CU_EXPORT CU_ErrorCode CU_run_selected_tests(int argc, char **argv){
         result = (CUE_SUCCESS == result) ? CUE_NO_SUITENAME : result;
       }else if(CU_FALSE == suite->fActive){
         fprintf(stderr,"Suite is inactive '%s'\n",suitename);
+        f_run_summary.nSuitesSelected++;
+        f_run_summary.nTestsSelected += suite->uiNumberOfTests;
         f_run_summary.nSuitesInactive++;
+        f_run_summary.nTestsInactive += suite->uiNumberOfTests;
         if(CU_FALSE != f_failure_on_inactive){
           add_failure(&f_failure_list, &f_run_summary, CUF_SuiteInactive,
               0, _("Suite inactive"), _("CUnit System"), suite, NULL
@@ -746,6 +814,8 @@ CU_EXPORT CU_ErrorCode CU_run_selected_tests(int argc, char **argv){
           }else{
             //fprintf(stderr,"Valid test '%s' in suite '%s'\n",n,suitename);
              /* found a valid suite+test name... run the test! */
+            f_run_summary.nSuitesSelected++;
+            f_run_summary.nTestsSelected++;
 
             /* run handler for suite start, if any */
             if (NULL != f_pSuiteStartMessageHandler) {
@@ -860,7 +930,10 @@ CU_ErrorCode CU_run_test(CU_pSuite pSuite, CU_pTest pTest)
     result = CUE_NOTEST;
   }
   else if (CU_FALSE == pSuite->fActive) {
+    f_run_summary.nSuitesSelected++;
+    f_run_summary.nTestsSelected++;
     f_run_summary.nSuitesInactive++;
+    f_run_summary.nTestsInactive++;
     if (CU_FALSE != f_failure_on_inactive) {
       add_failure(&f_failure_list, &f_run_summary, CUF_SuiteInactive,
                   0, _("Suite inactive"), _("CUnit System"), pSuite, NULL);
@@ -877,6 +950,8 @@ CU_ErrorCode CU_run_test(CU_pSuite pSuite, CU_pTest pTest)
 
     f_pCurTest = NULL;
     f_pCurSuite = pSuite;
+    f_run_summary.nSuitesSelected++;
+    f_run_summary.nTestsSelected++;
 
     pSuite->uiNumberOfTestsFailed = 0;
     pSuite->uiNumberOfTestsSuccess = 0;
@@ -995,12 +1070,17 @@ CU_EXPORT char * CU_get_run_results_string(void)
 {
   CU_pRunSummary pRunSummary = &f_run_summary;
   CU_pTestRegistry pRegistry = CU_get_registry();
-  size_t width[9];
+  unsigned int nTestsPassed = 0;
+  int width[11];
   size_t len;
   char *result;
 
   assert(NULL != pRunSummary);
   assert(NULL != pRegistry);
+
+  if (pRunSummary->nTestsRun >= pRunSummary->nTestsFailed + pRunSummary->nTestsSkipped) {
+    nTestsPassed = pRunSummary->nTestsRun - pRunSummary->nTestsFailed - pRunSummary->nTestsSkipped;
+  }
 
   width[0] = strlen(_("Run Summary:"));
   width[1] = CU_MAX(6,
@@ -1009,73 +1089,90 @@ CU_EXPORT char * CU_get_run_results_string(void)
                                   CU_MAX(strlen(_("tests")),
                                          strlen(_("asserts")))))) + 1;
   width[2] = CU_MAX(6,
-                    CU_MAX(strlen(_("Total")),
-                           CU_MAX(CU_number_width(pRegistry->uiNumberOfSuites),
-                                  CU_MAX(CU_number_width(pRegistry->uiNumberOfTests),
-                                         CU_number_width(pRunSummary->nAsserts))))) + 1;
+                           CU_MAX(strlen(_("Total")),
+                                  CU_MAX(CU_number_width(pRegistry->uiNumberOfSuites),
+                                         CU_MAX(CU_number_width(pRegistry->uiNumberOfTests),
+                                                CU_number_width(pRunSummary->nAsserts))))) + 1;
   width[3] = CU_MAX(6,
+                    CU_MAX(strlen(_("Selected")),
+                           CU_MAX(CU_number_width(pRunSummary->nSuitesSelected),
+                                  CU_MAX(CU_number_width(pRunSummary->nTestsSelected),
+                                         strlen(_("n/a")))))) + 1;
+  width[4] = CU_MAX(6,
                     CU_MAX(strlen(_("Ran")),
                            CU_MAX(CU_number_width(pRunSummary->nSuitesRun),
                                   CU_MAX(CU_number_width(pRunSummary->nTestsRun),
                                          CU_number_width(pRunSummary->nAsserts))))) + 1;
-  width[4] = CU_MAX(6,
+  width[5] = CU_MAX(6,
                     CU_MAX(strlen(_("Passed")),
                            CU_MAX(strlen(_("n/a")),
-                                  CU_MAX(CU_number_width(pRunSummary->nTestsRun - pRunSummary->nTestsFailed),
+                                  CU_MAX(CU_number_width(nTestsPassed),
                                          CU_number_width(pRunSummary->nAsserts - pRunSummary->nAssertsFailed))))) + 1;
-  width[5] = CU_MAX(6,
+  width[6] = CU_MAX(6,
                     CU_MAX(strlen(_("Failed")),
                            CU_MAX(CU_number_width(pRunSummary->nSuitesFailed),
                                   CU_MAX(CU_number_width(pRunSummary->nTestsFailed),
                                          CU_number_width(pRunSummary->nAssertsFailed))))) + 1;
-  width[6] = CU_MAX(6,
+  width[7] = CU_MAX(6,
+                    CU_MAX(strlen(_("Skipped")),
+                           CU_MAX(strlen(_("n/a")),
+                                  CU_number_width(pRunSummary->nTestsSkipped)))) + 1;
+  width[8] = CU_MAX(6,
                     CU_MAX(strlen(_("Inactive")),
                            CU_MAX(CU_number_width(pRunSummary->nSuitesInactive),
                                   CU_MAX(CU_number_width(pRunSummary->nTestsInactive),
                                          strlen(_("n/a")))))) + 1;
 
-  width[7] = strlen(_("Elapsed time = "));
-  width[8] = strlen(_(" seconds"));
+  width[9] = strlen(_("Elapsed time = "));
+  width[10] = strlen(_(" seconds"));
 
-  len = 13 + 4*(width[0] + width[1] + width[2] + width[3] + width[4] + width[5] + width[6]) + width[7] + width[8] + 1;
+  len = 13 + 4*(width[0] + width[1] + width[2] + width[3] + width[4] + width[5] + width[6] + width[7] + width[8]) + width[9] + width[10] + 1;
   result = (char *)CU_MALLOC(len);
 
   if (NULL != result) {
-    snprintf(result, len, "%*s%*s%*s%*s%*s%*s%*s\n"   /* if you change this, be sure  */
-                          "%*s%*s%*u%*u%*s%*u%*u\n"   /* to change the calculation of */
-                          "%*s%*s%*u%*u%*u%*u%*u\n"   /* len above!                   */
-                          "%*s%*s%*u%*u%*u%*u%*s\n\n"
+    snprintf(result, len, "%*s%*s%*s%*s%*s%*s%*s%*s%*s\n"   /* if you change this, be sure  */
+                          "%*s%*s%*u%*u%*u%*s%*u%*s%*u\n"   /* to change the calculation of */
+                          "%*s%*s%*u%*u%*u%*u%*u%*u%*u\n"   /* len above!                   */
+                          "%*s%*s%*u%*s%*u%*u%*u%*s%*s\n\n"
                           "%*s%8.3f%*s",
             width[0], _("Run Summary:"),
             width[1], _("Type"),
             width[2], _("Total"),
-            width[3], _("Ran"),
-            width[4], _("Passed"),
-            width[5], _("Failed"),
-            width[6], _("Inactive"),
+            width[3], _("Selected"),
+            width[4], _("Ran"),
+            width[5], _("Passed"),
+            width[6], _("Failed"),
+            width[7], _("Skipped"),
+            width[8], _("Inactive"),
             width[0], " ",
             width[1], _("suites"),
             width[2], pRegistry->uiNumberOfSuites,
-            width[3], pRunSummary->nSuitesRun,
-            width[4], _("n/a"),
-            width[5], pRunSummary->nSuitesFailed,
-            width[6], pRunSummary->nSuitesInactive,
+            width[3], pRunSummary->nSuitesSelected,
+            width[4], pRunSummary->nSuitesRun,
+            width[5], _("n/a"),
+            width[6], pRunSummary->nSuitesFailed,
+            width[7], _("n/a"),
+            width[8], pRunSummary->nSuitesInactive,
             width[0], " ",
             width[1], _("tests"),
             width[2], pRegistry->uiNumberOfTests,
-            width[3], pRunSummary->nTestsRun,
-            width[4], pRunSummary->nTestsRun - pRunSummary->nTestsFailed,
-            width[5], pRunSummary->nTestsFailed,
-            width[6], pRunSummary->nTestsInactive,
+            width[3], pRunSummary->nTestsSelected,
+            width[4], pRunSummary->nTestsRun,
+            width[5], nTestsPassed,
+            width[6], pRunSummary->nTestsFailed,
+            width[7], pRunSummary->nTestsSkipped,
+            width[8], pRunSummary->nTestsInactive,
             width[0], " ",
             width[1], _("asserts"),
             width[2], pRunSummary->nAsserts,
-            width[3], pRunSummary->nAsserts,
-            width[4], pRunSummary->nAsserts - pRunSummary->nAssertsFailed,
-            width[5], pRunSummary->nAssertsFailed,
-            width[6], _("n/a"),
-            width[7], _("Elapsed time = "), CU_get_elapsed_time(),  /* makes sure time is updated */
-            width[8], _(" seconds")
+            width[3], _("n/a"),
+            width[4], pRunSummary->nAsserts,
+            width[5], pRunSummary->nAsserts - pRunSummary->nAssertsFailed,
+            width[6], pRunSummary->nAssertsFailed,
+            width[7], _("n/a"),
+            width[8], _("n/a"),
+            width[9], _("Elapsed time = "), CU_get_elapsed_time(),  /* makes sure time is updated */
+            width[10], _(" seconds")
             );
      result[len-1] = '\0';
   }
@@ -1174,6 +1271,98 @@ static void add_failure(CU_pFailureRecord* ppFailure,
   f_last_failure = pFailureNew;
 }
 
+/*------------------------------------------------------------------------*/
+static void add_skip(CU_pSkipRecord* ppSkip,
+                     unsigned int uiLineNumber,
+                     const char *szFileName,
+                     const char *szReason,
+                     CU_pSuite pSuite,
+                     CU_pTest pTest)
+{
+  CU_pSkipRecord pSkipNew = NULL;
+  CU_pSkipRecord pTemp = NULL;
+
+  assert(NULL != ppSkip);
+
+  pSkipNew = (CU_pSkipRecord)CU_MALLOC(sizeof(CU_SkipRecord));
+
+  if (NULL == pSkipNew) {
+    return;
+  }
+
+  pSkipNew->strFileName = NULL;
+  pSkipNew->strReason = NULL;
+  if (NULL != szFileName) {
+    pSkipNew->strFileName = (char*)CU_MALLOC(strlen(szFileName) + 1);
+    if (NULL == pSkipNew->strFileName) {
+      CU_FREE(pSkipNew);
+      return;
+    }
+    strcpy(pSkipNew->strFileName, szFileName);
+  }
+
+  if (NULL != szReason) {
+    pSkipNew->strReason = (char*)CU_MALLOC(strlen(szReason) + 1);
+    if (NULL == pSkipNew->strReason) {
+      if (NULL != pSkipNew->strFileName) {
+        CU_FREE(pSkipNew->strFileName);
+      }
+      CU_FREE(pSkipNew);
+      return;
+    }
+    strcpy(pSkipNew->strReason, szReason);
+  }
+
+  pSkipNew->uiLineNumber = uiLineNumber;
+  pSkipNew->pTest = pTest;
+  pSkipNew->pSuite = pSuite;
+  pSkipNew->pNext = NULL;
+  pSkipNew->pPrev = NULL;
+
+  pTemp = *ppSkip;
+  if (NULL != pTemp) {
+    while (NULL != pTemp->pNext) {
+      pTemp = pTemp->pNext;
+    }
+    pTemp->pNext = pSkipNew;
+    pSkipNew->pPrev = pTemp;
+  }
+  else {
+    *ppSkip = pSkipNew;
+  }
+
+  f_current_skip = pSkipNew;
+}
+
+/*------------------------------------------------------------------------*/
+static void remove_skip(CU_pSkipRecord* ppSkip, CU_pSkipRecord pSkip)
+{
+  assert(NULL != ppSkip);
+
+  if (NULL == pSkip) {
+    return;
+  }
+
+  if (NULL != pSkip->pPrev) {
+    pSkip->pPrev->pNext = pSkip->pNext;
+  }
+  else {
+    *ppSkip = pSkip->pNext;
+  }
+
+  if (NULL != pSkip->pNext) {
+    pSkip->pNext->pPrev = pSkip->pPrev;
+  }
+
+  if (NULL != pSkip->strReason) {
+    CU_FREE(pSkip->strReason);
+  }
+  if (NULL != pSkip->strFileName) {
+    CU_FREE(pSkip->strFileName);
+  }
+  CU_FREE(pSkip);
+}
+
 /*
  *  Local function for result set initialization/cleanup.
  */
@@ -1203,12 +1392,22 @@ static void clear_previous_results(CU_pRunSummary pRunSummary, CU_pFailureRecord
   pRunSummary->nAssertsFailed = 0;
   pRunSummary->nFailureRecords = 0;
   pRunSummary->ElapsedTime = 0.0;
+  pRunSummary->nSuitesSelected = 0;
+  pRunSummary->nTestsSelected = 0;
+  pRunSummary->nTestsSkipped = 0;
 
   if (NULL != *ppFailure) {
     cleanup_failure_list(ppFailure);
   }
 
+  if (NULL != f_skip_list) {
+    cleanup_skip_list(&f_skip_list);
+  }
+
   f_last_failure = NULL;
+  f_current_skip = NULL;
+  f_current_test_skipped = CU_FALSE;
+  f_current_test_start_failures = 0;
 }
 
 /*------------------------------------------------------------------------*/
@@ -1247,6 +1446,39 @@ static void cleanup_failure_list(CU_pFailureRecord* ppFailure)
 
 /*------------------------------------------------------------------------*/
 /**
+ *  Frees all memory allocated for the linked list of test skip
+ *  records.  pSkip is reset to NULL after its list is cleaned up.
+ *
+ *  @param ppSkip Pointer to head of linked list of
+ *                CU_pSkipRecords to clean.
+ */
+static void cleanup_skip_list(CU_pSkipRecord* ppSkip)
+{
+  CU_pSkipRecord pCurSkip = NULL;
+  CU_pSkipRecord pNextSkip = NULL;
+
+  pCurSkip = *ppSkip;
+
+  while (NULL != pCurSkip) {
+
+    if (NULL != pCurSkip->strReason) {
+      CU_FREE(pCurSkip->strReason);
+    }
+
+    if (NULL != pCurSkip->strFileName) {
+      CU_FREE(pCurSkip->strFileName);
+    }
+
+    pNextSkip = pCurSkip->pNext;
+    CU_FREE(pCurSkip);
+    pCurSkip = pNextSkip;
+  }
+
+  *ppSkip = NULL;
+}
+
+/*------------------------------------------------------------------------*/
+/**
  *  Runs all tests in a specified suite.
  *  Internal function to run all tests in a suite.  The suite need
  *  not be registered in the test registry to be run.  Only
@@ -1276,6 +1508,8 @@ static CU_ErrorCode run_single_suite(CU_pSuite pSuite, CU_pRunSummary pRunSummar
 
   f_pCurTest = NULL;
   f_pCurSuite = pSuite;
+  pRunSummary->nSuitesSelected++;
+  pRunSummary->nTestsSelected += pSuite->uiNumberOfTests;
 
   /* run handler for suite start, if any */
   if (NULL != f_pSuiteStartMessageHandler) {
@@ -1346,6 +1580,7 @@ static CU_ErrorCode run_single_suite(CU_pSuite pSuite, CU_pRunSummary pRunSummar
   /* otherwise record inactive suite and failure if appropriate */
   else {
     f_run_summary.nSuitesInactive++;
+    f_run_summary.nTestsInactive += pSuite->uiNumberOfTests;
     if (CU_FALSE != f_failure_on_inactive) {
       add_failure(&f_failure_list, &f_run_summary, CUF_SuiteInactive,
                   0, _("Suite inactive"), _("CUnit System"), pSuite, NULL);
@@ -1415,6 +1650,9 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
   nStartFailures = pRunSummary->nFailureRecords;
 
   f_pCurTest = pTest;
+  f_current_skip = NULL;
+  f_current_test_skipped = CU_FALSE;
+  f_current_test_start_failures = nStartFailures;
 
   if (NULL != f_pTestStartMessageHandler) {
     (*f_pTestStartMessageHandler)(f_pCurTest, f_pCurSuite);
@@ -1462,6 +1700,11 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
     //fprintf(stderr,"\nFound some failures...\n");
     pRunSummary->nTestsFailed++;
     test_failed = 1;
+    if (NULL != f_current_skip) {
+      remove_skip(&f_skip_list, f_current_skip);
+      f_current_skip = NULL;
+    }
+    f_current_test_skipped = CU_FALSE;
     if(NULL != pLastFailure) {
       pLastFailure = pLastFailure->pNext;  /* was a previous failure, so go to next one */
     }else{
@@ -1469,6 +1712,9 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
     }
   }else{
     pLastFailure = NULL;                   /* no additional failure - set to NULL */
+    if (CU_FALSE != f_current_test_skipped) {
+      pRunSummary->nTestsSkipped++;
+    }
   }
   if(capture_enabled){
     cu_capture_stop(test_failed ? 1 : 0);
@@ -1483,6 +1729,9 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
 
   pTest->pJumpBuf = NULL;
   f_pCurTest = NULL;
+  f_current_skip = NULL;
+  f_current_test_skipped = CU_FALSE;
+  f_current_test_start_failures = 0;
 
   return result;
 }
@@ -1826,6 +2075,24 @@ static void do_test_results(unsigned int nSuitesRun,
 
 static void test_succeed(void) { CU_TEST(CU_TRUE); }
 static void test_fail(void) { CU_TEST(CU_FALSE); }
+static void test_skip_static(void) { CU_SKIP("static skip reason"); }
+static void test_skip_dynamic(void)
+{
+  char reason[80];
+  snprintf(reason, sizeof(reason), "dynamic skip reason %d", 42);
+  reason[sizeof(reason)-1] = '\0';
+  CU_SKIP(reason);
+}
+static void test_skip_if_true(void) { CU_SKIP_IF(CU_TRUE, "skip-if reason"); }
+static void test_skip_if_false(void) { CU_SKIP_IF(CU_FALSE, "should not skip"); CU_TEST(CU_TRUE); }
+static void test_fail_then_skip(void) { CU_TEST(CU_FALSE); CU_SKIP("ignored after failure"); }
+static void test_skip_null_reason(void) { CU_SKIP(NULL); }
+static void test_skip_empty_reason(void) { CU_SKIP(""); }
+static void test_skip_twice(void)
+{
+  CU_skipImplementation(__LINE__, __FILE__, "first skip reason");
+  CU_skipImplementation(__LINE__, __FILE__, "second skip reason");
+}
 static int suite_succeed(void) { return 0; }
 static int suite_fail(void) { return 1; }
 
@@ -1836,6 +2103,38 @@ static void test_fail_if_not_setup(void) { CU_TEST(SetUp_Passed); }
 
 static void suite_setup(void) { SetUp_Passed = CU_TRUE; }
 static void suite_teardown(void) { SetUp_Passed = CU_FALSE; }
+static void suite_teardown_fail(void) { CU_TEST(CU_FALSE); }
+
+static CU_pSuite f_expected_skip_record_suite = NULL;
+static CU_pTest f_expected_skip_record_test = NULL;
+static const char *f_expected_skip_record_reason = NULL;
+static unsigned int f_nSkipRecordHandlerCalls = 0;
+
+static void skip_record_test_complete_handler(const CU_pTest pTest,
+                                              const CU_pSuite pSuite,
+                                              const CU_pFailureRecord pFailure)
+{
+  CU_pSkipRecord pSkip = CU_get_current_test_skip_record();
+
+  TEST(NULL == pFailure);
+  TEST(f_expected_skip_record_suite == pSuite);
+  TEST(f_expected_skip_record_test == pTest);
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest == pSkip->pTest);
+    if (NULL == f_expected_skip_record_reason) {
+      TEST(NULL == pSkip->strReason);
+    }
+    else {
+      TEST(NULL != pSkip->strReason);
+      if (NULL != pSkip->strReason) {
+        TEST(!strcmp(f_expected_skip_record_reason, pSkip->strReason));
+      }
+    }
+  }
+  ++f_nSkipRecordHandlerCalls;
+}
 
 
 /*-------------------------------------------------*/
@@ -1912,7 +2211,7 @@ static void test_message_handlers(void)
 
   TEST(0 == f_nTestEvents);
   TEST(NULL == f_pFirstEvent);
-  test_results(2,2,1,4,2,1,4,2,2,6);
+  test_results(2,2,1,4,2,2,4,2,2,6);
 
   /* set handlers to local functions */
   CU_set_suite_start_handler(&suite_start_handler);
@@ -2078,7 +2377,7 @@ static void test_message_handlers(void)
     TEST(pEvent->pFailure == CU_get_failure_list());
   }
 
-  test_results(2,2,1,4,2,1,4,2,2,6);
+  test_results(2,2,1,4,2,2,4,2,2,6);
 
   /* clear handlers and run again */
   CU_set_suite_start_handler(NULL);
@@ -2104,10 +2403,176 @@ static void test_message_handlers(void)
 
   TEST(0 == f_nTestEvents);
   TEST(NULL == f_pFirstEvent);
-  test_results(2,2,1,4,2,1,4,2,2,6);
+  test_results(2,2,1,4,2,2,4,2,2,6);
 
   CU_cleanup_registry();
   clear_test_events();
+}
+
+/*-------------------------------------------------*/
+/*  tests CU_SKIP() and CU_SKIP_IF()
+ */
+static void test_CU_skip(void)
+{
+  CU_pSuite pSuite = NULL;
+  CU_pSuite pTeardownSuite = NULL;
+  CU_pTest pTest1 = NULL;
+  CU_pTest pTest2 = NULL;
+  CU_pTest pTest3 = NULL;
+  CU_pTest pTest5 = NULL;
+  CU_pTest pTest6 = NULL;
+  CU_pTest pTest7 = NULL;
+  CU_pTest pTest8 = NULL;
+  CU_pTest pTeardownTest = NULL;
+  CU_pSkipRecord pSkip = NULL;
+  CU_pSkipRecord pPrevSkip = NULL;
+
+  CU_set_error_action(CUEA_IGNORE);
+  CU_initialize_registry();
+
+  pSuite = CU_add_suite("skip_suite", NULL, NULL);
+  pTest1 = CU_add_test(pSuite, "skip_static", test_skip_static);
+  pTest2 = CU_add_test(pSuite, "skip_dynamic", test_skip_dynamic);
+  pTest3 = CU_add_test(pSuite, "skip_if_true", test_skip_if_true);
+  CU_add_test(pSuite, "skip_if_false", test_skip_if_false);
+  pTest5 = CU_add_test(pSuite, "fail_then_skip", test_fail_then_skip);
+  pTest6 = CU_add_test(pSuite, "skip_null_reason", test_skip_null_reason);
+  pTest7 = CU_add_test(pSuite, "skip_empty_reason", test_skip_empty_reason);
+  pTest8 = CU_add_test(pSuite, "skip_twice", test_skip_twice);
+
+  TEST_FATAL(CUE_SUCCESS == CU_get_error());
+  TEST(CUE_SUCCESS == CU_run_suite(pSuite));
+
+  TEST(1 == CU_get_number_of_suites_selected());
+  TEST(8 == CU_get_number_of_tests_selected());
+  TEST(8 == CU_get_number_of_tests_run());
+  TEST(6 == CU_get_number_of_tests_skipped());
+  TEST(1 == CU_get_number_of_tests_failed());
+  TEST(0 == CU_get_number_of_tests_inactive());
+  TEST(2 == CU_get_number_of_asserts());
+  TEST(1 == CU_get_number_of_failures());
+  TEST(1 == CU_get_number_of_failure_records());
+
+  pSkip = CU_get_skip_list();
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest1 == pSkip->pTest);
+    TEST(NULL != pSkip->strReason);
+    TEST(!strcmp("static skip reason", pSkip->strReason));
+    TEST(NULL == pSkip->pPrev);
+    TEST(NULL != pSkip->pNext);
+    pPrevSkip = pSkip;
+  }
+
+  if (NULL != pSkip) {
+    pSkip = pSkip->pNext;
+  }
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest2 == pSkip->pTest);
+    TEST(NULL != pSkip->strReason);
+    TEST(!strcmp("dynamic skip reason 42", pSkip->strReason));
+    TEST(pPrevSkip == pSkip->pPrev);
+    TEST(NULL != pSkip->pNext);
+    pPrevSkip = pSkip;
+  }
+
+  if (NULL != pSkip) {
+    pSkip = pSkip->pNext;
+  }
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest3 == pSkip->pTest);
+    TEST(NULL != pSkip->strReason);
+    TEST(!strcmp("skip-if reason", pSkip->strReason));
+    TEST(pPrevSkip == pSkip->pPrev);
+    TEST(NULL != pSkip->pNext);
+    pPrevSkip = pSkip;
+  }
+
+  if (NULL != pSkip) {
+    pSkip = pSkip->pNext;
+  }
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest6 == pSkip->pTest);
+    TEST(NULL == pSkip->strReason);
+    TEST(pPrevSkip == pSkip->pPrev);
+    TEST(NULL != pSkip->pNext);
+    pPrevSkip = pSkip;
+  }
+
+  if (NULL != pSkip) {
+    pSkip = pSkip->pNext;
+  }
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest7 == pSkip->pTest);
+    TEST(NULL != pSkip->strReason);
+    if (NULL != pSkip->strReason) {
+      TEST('\0' == pSkip->strReason[0]);
+    }
+    TEST(pPrevSkip == pSkip->pPrev);
+    TEST(NULL != pSkip->pNext);
+    pPrevSkip = pSkip;
+  }
+
+  if (NULL != pSkip) {
+    pSkip = pSkip->pNext;
+  }
+  TEST(NULL != pSkip);
+  if (NULL != pSkip) {
+    TEST(pSuite == pSkip->pSuite);
+    TEST(pTest8 == pSkip->pTest);
+    TEST(NULL != pSkip->strReason);
+    TEST(!strcmp("first skip reason", pSkip->strReason));
+    TEST(pPrevSkip == pSkip->pPrev);
+    TEST(NULL == pSkip->pNext);
+  }
+
+  TEST(CUE_SUCCESS == CU_run_test(pSuite, pTest5));
+  TEST(1 == CU_get_number_of_tests_selected());
+  TEST(1 == CU_get_number_of_tests_run());
+  TEST(0 == CU_get_number_of_tests_skipped());
+  TEST(1 == CU_get_number_of_tests_failed());
+  TEST(NULL == CU_get_skip_list());
+
+  f_expected_skip_record_suite = pSuite;
+  f_expected_skip_record_test = pTest2;
+  f_expected_skip_record_reason = "dynamic skip reason 42";
+  f_nSkipRecordHandlerCalls = 0;
+  CU_set_test_complete_handler(skip_record_test_complete_handler);
+  TEST(CUE_SUCCESS == CU_run_test(pSuite, pTest2));
+  TEST(1 == f_nSkipRecordHandlerCalls);
+  TEST(1 == CU_get_number_of_tests_skipped());
+  CU_set_test_complete_handler(NULL);
+  f_expected_skip_record_suite = NULL;
+  f_expected_skip_record_test = NULL;
+  f_expected_skip_record_reason = NULL;
+
+  pTeardownSuite = CU_add_suite_with_setup_and_teardown("skip_teardown_fail_suite",
+                                                        NULL,
+                                                        NULL,
+                                                        NULL,
+                                                        suite_teardown_fail);
+  pTeardownTest = CU_add_test(pTeardownSuite, "skip_then_teardown_fails", test_skip_static);
+  TEST_FATAL(CUE_SUCCESS == CU_get_error());
+  TEST(CUE_SUCCESS == CU_run_test(pTeardownSuite, pTeardownTest));
+  TEST(1 == CU_get_number_of_tests_selected());
+  TEST(1 == CU_get_number_of_tests_run());
+  TEST(0 == CU_get_number_of_tests_skipped());
+  TEST(1 == CU_get_number_of_tests_failed());
+  TEST(1 == CU_get_number_of_asserts());
+  TEST(1 == CU_get_number_of_failures());
+  TEST(1 == CU_get_number_of_failure_records());
+  TEST(NULL == CU_get_skip_list());
+
+  CU_cleanup_registry();
 }
 
 static CU_BOOL f_exit_called = CU_FALSE;
@@ -2164,20 +2629,20 @@ static void test_CU_fail_on_inactive(void)
   CU_set_suite_active(pSuite2, CU_FALSE);
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_all_tests());   /* all suites inactive */
-  test_results(0,0,2,0,0,0,0,0,0,2);
+  test_results(0,0,2,0,0,4,0,0,0,2);
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SUCCESS == CU_run_all_tests());
-  test_results(0,0,2,0,0,0,0,0,0,0);
+  test_results(0,0,2,0,0,4,0,0,0,0);
   CU_set_suite_active(pSuite1, CU_TRUE);
   CU_set_suite_active(pSuite2, CU_TRUE);
 
   CU_set_suite_active(pSuite2, CU_FALSE);
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_all_tests());   /* some suites inactive */
-  test_results(1,0,1,2,1,0,2,1,1,2);
+  test_results(1,0,1,2,1,2,2,1,1,2);
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SUCCESS == CU_run_all_tests());
-  test_results(1,0,1,2,1,0,2,1,1,1);
+  test_results(1,0,1,2,1,2,2,1,1,1);
   CU_set_suite_active(pSuite2, CU_TRUE);
 
   CU_set_test_active(pTest1, CU_FALSE);
@@ -2210,10 +2675,10 @@ static void test_CU_fail_on_inactive(void)
   CU_set_test_active(pTest1, CU_FALSE);
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_TEST_INACTIVE == CU_run_all_tests());    /* some suites & tests inactive */
-  test_results(1,0,1,1,1,1,1,0,1,3);
+  test_results(1,0,1,1,1,3,1,0,1,3);
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SUCCESS == CU_run_all_tests());
-  test_results(1,0,1,1,1,1,1,0,1,1);
+  test_results(1,0,1,1,1,3,1,0,1,1);
   CU_set_suite_active(pSuite2, CU_TRUE);
   CU_set_test_active(pTest1, CU_TRUE);
 
@@ -2300,10 +2765,10 @@ static void test_CU_run_all_tests(void)
   CU_set_suite_active(pSuite4, CU_FALSE);
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SUCCESS == CU_run_all_tests());          /* suites inactive */
-  test_results(0,0,4,0,0,0,0,0,0,0);
+  test_results(0,0,4,0,0,10,0,0,0,0);
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_all_tests());
-  test_results(0,0,4,0,0,0,0,0,0,4);
+  test_results(0,0,4,0,0,10,0,0,0,4);
 
   CU_set_suite_active(pSuite1, CU_FALSE);
   CU_set_suite_active(pSuite2, CU_TRUE);
@@ -2311,10 +2776,10 @@ static void test_CU_run_all_tests(void)
   CU_set_suite_active(pSuite4, CU_FALSE);
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SINIT_FAILED == CU_run_all_tests());   /* some suites inactive */
-  test_results(1,1,2,2,1,0,2,1,1,2);
+  test_results(1,1,2,2,1,6,2,1,1,2);
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_all_tests());
-  test_results(1,1,2,2,1,0,2,1,1,4);
+  test_results(1,1,2,2,1,6,2,1,1,4);
 
   CU_set_suite_active(pSuite1, CU_TRUE);
   CU_set_suite_active(pSuite2, CU_TRUE);
@@ -2396,10 +2861,10 @@ static void test_CU_run_all_tests(void)
   CU_set_suite_active(pSuite4, CU_TRUE);
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SCLEAN_FAILED == CU_run_all_tests()); /* some suites inactive */
-  test_results(2,1,2,6,2,0,6,4,2,3);
+  test_results(2,1,2,6,2,4,6,4,2,3);
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_all_tests());
-  test_results(1,0,1,5,2,0,5,3,2,3);
+  test_results(1,0,1,5,2,2,5,3,2,3);
 
   CU_set_suite_active(pSuite1, CU_TRUE);
   CU_set_suite_active(pSuite2, CU_TRUE);
@@ -2493,12 +2958,12 @@ static void test_CU_run_all_tests(void)
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SUCCESS == CU_run_all_tests());         /* no suites active, so no abort() */
   TEST(CU_FALSE == f_exit_called);
-  test_results(0,0,4,0,0,0,0,0,0,0);
+  test_results(0,0,4,0,0,10,0,0,0,0);
   f_exit_called = CU_FALSE;
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_all_tests());
   TEST(CU_TRUE == f_exit_called);
-  test_results(0,0,1,0,0,0,0,0,0,1);
+  test_results(0,0,1,0,0,5,0,0,0,1);
 
   CU_set_suite_active(pSuite1, CU_TRUE);
   CU_set_suite_active(pSuite2, CU_FALSE);
@@ -2508,12 +2973,12 @@ static void test_CU_run_all_tests(void)
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SCLEAN_FAILED == CU_run_all_tests()); /* some suites active */
   TEST(CU_TRUE == f_exit_called);
-  test_results(3,1,1,8,3,0,8,5,3,4);
+  test_results(3,1,1,8,3,2,8,5,3,4);
   f_exit_called = CU_FALSE;
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_all_tests());
   TEST(CU_TRUE == f_exit_called);
-  test_results(1,0,1,5,2,0,5,3,2,3);
+  test_results(1,0,1,5,2,2,5,3,2,3);
 
   CU_set_suite_active(pSuite1, CU_TRUE);
   CU_set_suite_active(pSuite2, CU_TRUE);
@@ -2696,10 +3161,10 @@ static void test_CU_run_suite(void)
   CU_set_suite_active(pSuite3, CU_FALSE);
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SUCCESS == CU_run_suite(pSuite3));   /* suite inactive */
-  test_results(0,0,1,0,0,0,0,0,0,0);
+  test_results(0,0,1,0,0,2,0,0,0,0);
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_suite(pSuite3));
-  test_results(0,0,1,0,0,0,0,0,0,1);
+  test_results(0,0,1,0,0,2,0,0,0,1);
   CU_set_suite_active(pSuite3, CU_TRUE);
 
   CU_set_test_active(pTest1, CU_FALSE);
@@ -2765,10 +3230,10 @@ static void test_CU_run_suite(void)
   CU_set_suite_active(pSuite1, CU_FALSE);
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SUCCESS == CU_run_suite(pSuite1));         /* suite inactive */
-  test_results(0,0,1,0,0,0,0,0,0,0);
+  test_results(0,0,1,0,0,5,0,0,0,0);
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_suite(pSuite1));
-  test_results(0,0,1,0,0,0,0,0,0,1);
+  test_results(0,0,1,0,0,5,0,0,0,1);
   CU_set_suite_active(pSuite1, CU_TRUE);
 
   CU_set_test_active(pTest8, CU_FALSE);
@@ -2836,12 +3301,12 @@ static void test_CU_run_suite(void)
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SUCCESS == CU_run_suite(pSuite2));         /* suite inactive, but not a failure */
   TEST(CU_FALSE == f_exit_called);
-  test_results(0,0,1,0,0,0,0,0,0,0);
+  test_results(0,0,1,0,0,2,0,0,0,0);
   f_exit_called = CU_FALSE;
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_suite(pSuite2));
   TEST(CU_TRUE == f_exit_called);
-  test_results(0,0,1,0,0,0,0,0,0,1);
+  test_results(0,0,1,0,0,2,0,0,0,1);
   CU_set_suite_active(pSuite2, CU_TRUE);
 
   CU_set_test_active(pTest8, CU_FALSE);
@@ -3026,10 +3491,10 @@ static void test_CU_run_test(void)
   CU_set_suite_active(pSuite1, CU_FALSE);
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SUITE_INACTIVE == CU_run_test(pSuite1, pTest1));  /* suite inactive */
-  test_results(0,0,1,0,0,0,0,0,0,0);
+  test_results(0,0,1,0,0,1,0,0,0,0);
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_test(pSuite1, pTest1));
-  test_results(0,0,1,0,0,0,0,0,0,1);
+  test_results(0,0,1,0,0,1,0,0,0,1);
   CU_set_suite_active(pSuite1, CU_TRUE);
 
   CU_set_test_active(pTest1, CU_FALSE);
@@ -3089,10 +3554,10 @@ static void test_CU_run_test(void)
   CU_set_suite_active(pSuite2, CU_FALSE);
   CU_set_fail_on_inactive(CU_FALSE);
   TEST(CUE_SUITE_INACTIVE == CU_run_test(pSuite2, pTest7));   /* suite inactive */
-  test_results(0,0,1,0,0,0,0,0,0,0);
+  test_results(0,0,1,0,0,1,0,0,0,0);
   CU_set_fail_on_inactive(CU_TRUE);
   TEST(CUE_SUITE_INACTIVE == CU_run_test(pSuite2, pTest7));
-  test_results(0,0,1,0,0,0,0,0,0,1);
+  test_results(0,0,1,0,0,1,0,0,0,1);
   CU_set_suite_active(pSuite2, CU_TRUE);
 
   CU_set_test_active(pTest7, CU_FALSE);
@@ -3172,12 +3637,12 @@ static void test_CU_run_test(void)
   f_exit_called = CU_FALSE;
   TEST(CUE_SUITE_INACTIVE == CU_run_test(pSuite2, pTest6));   /* suite inactive */
   TEST(CU_TRUE == f_exit_called);
-  test_results(0,0,1,0,0,0,0,0,0,0);
+  test_results(0,0,1,0,0,1,0,0,0,0);
   CU_set_fail_on_inactive(CU_TRUE);
   f_exit_called = CU_FALSE;
   TEST(CUE_SUITE_INACTIVE == CU_run_test(pSuite2, pTest6));
   TEST(CU_TRUE == f_exit_called);
-  test_results(0,0,1,0,0,0,0,0,0,1);
+  test_results(0,0,1,0,0,1,0,0,0,1);
   CU_set_suite_active(pSuite2, CU_TRUE);
 
   CU_set_test_active(pTest6, CU_FALSE);
@@ -3350,7 +3815,7 @@ static void test_add_failure(void)
   CU_pFailureRecord pFailure2 = NULL;
   CU_pFailureRecord pFailure3 = NULL;
   CU_pFailureRecord pFailure4 = NULL;
-  CU_RunSummary run_summary = {"", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  CU_RunSummary run_summary = {"", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
   /* test under memory exhaustion */
   test_cunit_deactivate_malloc();
@@ -3420,6 +3885,7 @@ void test_cunit_TestRun(void)
   test_cunit_start_tests("TestRun.c");
 
   test_message_handlers();
+  test_CU_skip();
   test_CU_fail_on_inactive();
   test_CU_run_all_tests();
   test_CU_run_suite();

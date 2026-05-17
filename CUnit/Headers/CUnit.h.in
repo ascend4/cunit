@@ -148,6 +148,14 @@
 #define CU_FAIL_FATAL(msg) \
   { CU_assertImplementation(CU_FALSE, __LINE__, ("CU_FAIL_FATAL(" #msg ")"), __FILE__, "", CU_TRUE); }
 
+/** Skip the current test with a reason, and return from the test function. */
+#define CU_SKIP(reason) \
+  { CU_skipImplementation(__LINE__, __FILE__, (reason)); return; }
+
+/** Skip the current test with a reason if the condition is true, and return from the test function. */
+#define CU_SKIP_IF(value, reason) \
+  { if (value) { CU_skipImplementation(__LINE__, __FILE__, (reason)); return; } }
+
 /** Asserts that value is CU_TRUE.
  *  Reports failure with no other action.
  */

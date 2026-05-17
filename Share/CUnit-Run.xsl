@@ -86,10 +86,17 @@
 		<tr bgcolor="#f0f0d0">
 			<td> </td>
 			<td colspan="2">
-				Skipping test <xsl:apply-templates/>...
+				Skipping test <xsl:value-of select="TEST_NAME"/>...
 			</td>
 			<td bgcolor="#ffee50"> Skipped </td>
 		</tr>
+		<xsl:if test="SKIP_REASON">
+			<tr>
+				<td colspan="4" bgcolor="#fff0a0">
+					<xsl:value-of select="SKIP_REASON"/>
+				</td>
+			</tr>
+		</xsl:if>
 	</xsl:template>
 
 	<xsl:template match="CUNIT_RUN_TEST_FAILURE">
@@ -151,23 +158,27 @@
 		<p/>
 		<table width="90%" rows="5" align="center">
 			<tr align="center" bgcolor="skyblue">
-				<th colspan="6"> Cumulative Summary for Run </th>
+				<th colspan="8"> Cumulative Summary for Run </th>
 			</tr>
 			<tr>
-				<th width="15%" bgcolor="#ffffc0" align="center"> Type </th>
-				<th width="17%" bgcolor="#ffffc0" align="center"> Total </th>
-				<th width="17%" bgcolor="#ffffc0" align="center"> Run </th>
-				<th width="17%" bgcolor="#ffffc0" align="center"> Succeeded </th>
-				<th width="17%" bgcolor="#ffffc0" align="center"> Failed </th>
-				<th width="17%" bgcolor="#ffffc0" align="center"> Inactive </th>
+				<th width="12%" bgcolor="#ffffc0" align="center"> Type </th>
+				<th width="12%" bgcolor="#ffffc0" align="center"> Total </th>
+				<th width="12%" bgcolor="#ffffc0" align="center"> Selected </th>
+				<th width="12%" bgcolor="#ffffc0" align="center"> Run </th>
+				<th width="13%" bgcolor="#ffffc0" align="center"> Succeeded </th>
+				<th width="13%" bgcolor="#ffffc0" align="center"> Failed </th>
+				<th width="13%" bgcolor="#ffffc0" align="center"> Skipped </th>
+				<th width="13%" bgcolor="#ffffc0" align="center"> Inactive </th>
 			</tr>
 			<xsl:for-each select="CUNIT_RUN_SUMMARY_RECORD">
 				<tr align="center" bgcolor="lightgreen">
 					<td> <xsl:value-of select="TYPE" /> </td>
 					<td> <xsl:value-of select="TOTAL" /> </td>
+					<td> <xsl:value-of select="SELECTED" /> </td>
 					<td> <xsl:value-of select="RUN" /> </td>
 					<td> <xsl:value-of select="SUCCEEDED" /> </td>
 					<td> <xsl:value-of select="FAILED" /> </td>
+					<td> <xsl:value-of select="SKIPPED" /> </td>
 					<td> <xsl:value-of select="INACTIVE" /> </td>
 				</tr>
 			</xsl:for-each>

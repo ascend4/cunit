@@ -1,5 +1,7 @@
 ## Process this file with automake to produce Makefile.in
 
+AUTOMAKE_OPTIONS = foreign
+
 COMPILE_DIRS = CUnit doc Man Share
 
 if ENABLE_EXAMPLES
@@ -10,7 +12,7 @@ COMPILE_DIRS += $(EXAMPLE_COMPILE_DIR)
 
 SUBDIRS = ${COMPILE_DIRS}
 
-DIST_BASENAME=cunit-@VERSION@-@RELEASE@
+DIST_BASENAME=cunit-@DIST_VERSION@
 distdir=${DIST_BASENAME}
 
 WD=`pwd`
@@ -34,7 +36,7 @@ RPM_I686=./RPMS/i686/@PACKAGE@-@VERSION@-@RELEASE@.i686.rpm
 RPM_K6=./RPMS/athlon/@PACKAGE@-@VERSION@-@RELEASE@.k6.rpm
 RPM_SRC=./SRPMS/@PACKAGE@-@VERSION@-@RELEASE@.src.rpm
 
-EXTRA_DIST=cunit.pc.in
+EXTRA_DIST=VERSION README.md bootstrap cunit.pc.in
 EXTRA_REMOVE=CUnit-Memory-Dump.lst ${SOURCE_GZIP_FILE} \
 	*.rpm *.o *.ncb *.plg *.opt *.clw *.ilk *.exe *.pdb *.lib
 
@@ -52,13 +54,14 @@ distclean-all: distclean
 	rm -f ${SOURCE_GZIP_FILE} *.rpm
 	rm -rf ${RPMDIRS}
 
-# Release archives are generated with `git archive` in CI and release tooling.
+# Release archives are generated with Automake's `make dist`/`make distcheck`
+# in CI and release tooling.
 # The legacy RPM target is left here commented out for review.
 #
 # rpm: rpm-package
 #
 # rpm-package:
-# 	# Expects ${SOURCE_GZIP_FILE} from a prior `git archive` step.
+# 	# Expects ${SOURCE_GZIP_FILE} from a prior `make dist` step.
 # 	rm -rf ${RPMDIRS} && \
 # 	mkdir -p ${RPMDIRS} && \
 # 	cp ${SPECFILE} ${PACKAGE_TMPSPEC} && \

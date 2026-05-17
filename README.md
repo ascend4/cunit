@@ -17,6 +17,11 @@ conventional structure of test cases bundled into suites which are registered
 with the framework for running. See the documentation for more about the
 structure and use of the framework.
 
+Tests can self-skip at runtime with `CU_SKIP(reason)` or
+`CU_SKIP_IF(condition, reason)`. Skip reasons are copied by the framework and
+reported separately from inactive tests; if a test has already recorded a
+failure, it remains failed rather than skipped.
+
 Note: the Windows-specific GUI interface is not yet written. It is still
 necessary to use either the automated, basic, or console interfaces to CUnit
 on Windows at this time.
@@ -110,6 +115,27 @@ dots, for example `v2.1.3`.
 If the tag, `VERSION`, and `packaging/msys2/PKGBUILD` version fields do not
 all match, the release workflow fails before publishing any assets.
 
+For ordinary branch and pull-request work, use the normal build workflows:
+
+- `CUnit Ubuntu Build` builds from a git checkout on supported Ubuntu runners,
+  runs the internal self-tests, installs the library, and reports coverage.
+- `CUnit MSYS2 Build` builds from a git checkout on MSYS2 UCRT64, runs the
+  internal self-tests, installs the library, and smoke-tests the installed
+  `pkgconf` metadata.
+
+These workflows are checkout builds.  They do not validate release tarball
+packaging.
+
+To dry-run the release build without publishing a GitHub release, manually run
+the `CUnit Release` workflow from GitHub Actions on the release branch.  The
+optional `release_tag` input should match the normalized `VERSION` value, such
+as `v2.1.3`; if omitted, the workflow derives the expected tag from `VERSION`.
+The release workflow builds one source tarball on Ubuntu with Automake
+`make distcheck`, then tests that same tarball on Ubuntu, Rocky 8, and MSYS2
+UCRT64.  The MSYS2 job builds its package from that tarball, installs the
+package, and runs the smoke test.  A dry run uploads workflow artifacts only.
+The final GitHub release is created only for a pushed `v*` tag.
+
 To publish a release:
 
 1. Update `VERSION` and the packaging metadata.
@@ -118,6 +144,7 @@ To publish a release:
 
 The release workflow publishes both a source tarball and the MSYS2 UCRT64
 `.pkg.tar.zst` package for the tagged commit. The source tarball is named
-`cunit-<VERSION>.tar.gz` and extracts into `cunit-<VERSION>/`. Release
-tarballs are generated with `git archive`; the old manual `make tarball`
-path is intentionally disabled.
+`cunit-<VERSION>.tar.gz`, extracts into `cunit-<VERSION>/`, and is generated
+with Automake `make distcheck`, so it includes `configure` and the generated
+`Makefile.in` files. Building directly from a git checkout still requires
+`./bootstrap` before `./configure`.

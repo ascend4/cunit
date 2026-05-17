@@ -3,41 +3,31 @@
 _realname=cunit
 pkgbase=mingw-w64-${_realname}
 pkgname=("${MINGW_PACKAGE_PREFIX}-${_realname}")
-_distver="2.2-4"
+_distver="$(tr -d '[:space:]' < ../../VERSION)"
 _srcname="cunit"
 _distdir="${_srcname}-${_distver}"
-pkgver=2.2.4
+pkgver=${_distver//-/.}
 pkgrel=6
 pkgdesc="Lightweight system for writing, administering, and running unit tests in C (mingw-w64)"
 arch=('any')
 mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clangarm64')
 url='https://github.com/ascend4/cunit'
 license=('LGPL2.1')
-makedepends=("${MINGW_PACKAGE_PREFIX}-autotools" "${MINGW_PACKAGE_PREFIX}-cc")
-source=("${_distdir}.tar.gz"
-        "002-fix-shared.patch")
-sha256sums=('SKIP'
-            '03aa848d6cd7464f24efacccfffb4d3942515bde0b36c3ef5ea0d7141d663269')
-
-prepare() {
-  cd "${srcdir}/${_distdir}"
-  patch -Np1 -i "${srcdir}/002-fix-shared.patch"
-
-  ./bootstrap
-}
+makedepends=("${MINGW_PACKAGE_PREFIX}-cc")
+source=("${_distdir}.tar.gz")
+sha256sums=('SKIP')
 
 build() {
   cd "${srcdir}"
   rm -rf "build-${MSYSTEM}" || true
   mkdir -p "build-${MSYSTEM}"
-  cp -Rf "${_distdir}/"* "build-${MSYSTEM}/"
   cd "build-${MSYSTEM}"
 
   # These checks fail with some MinGW targets unless we pin the known result.
   export ac_cv_func_time=yes
   export ac_cv_func_ctime=yes
 
-  ./configure \
+  "../${_distdir}/configure" \
     --prefix="${MINGW_PREFIX}" \
     --build="${MINGW_CHOST}" \
     --host="${MINGW_CHOST}" \
@@ -59,6 +49,6 @@ check() {
 package() {
   cd "${srcdir}/build-${MSYSTEM}"
   make DESTDIR="${pkgdir}" install
-  install -Dm644 COPYING "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
+  install -Dm644 "${srcdir}/${_distdir}/COPYING" "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
   find "${pkgdir}" -name '*.la' -delete
 }

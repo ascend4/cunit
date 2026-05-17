@@ -271,6 +271,16 @@ Register a success without performing a logical test.
 Register a failure without performing a logical test.
 .RE
 
+.P
+.B CU_SKIP(reason)
+.br
+.B CU_SKIP_IF(condition, reason)
+.RS 5
+Record the current test as skipped and return from the test function.  The
+framework copies the reason string for later reporting.  If the test has
+already recorded a failure, the test remains failed rather than skipped.
+.RE
+
 .SH "THE TEST REGISTRY"
 The test registry is the repository for suites and associated tests.
 The user normally only needs to initialize the registry before use and
@@ -574,30 +584,51 @@ details and results for the user.  For more about the primitive functions, see
 .SS "Test Results"
 The interfaces present results of test runs, but client code may sometimes need
 to access the results directly.  These results include various run counts, as
-well as a linked list of failure records holding the failure details.  Test
-results must be retrieved before attempting to run other tests, which
+well as linked lists of failure and skip records holding the failure and skip
+details.  Test results must be retrieved before attempting to run other tests, which
 resets the result information.  Functions for accessing the test results are:
 .P
 .B #include <CUnit/TestRun.h>
 (included automatically by <CUnit/CUnit.h>)
 .TP 5
-.B "unsigned int CU_get_number_of_suites_run(void)'
+.B "unsigned int CU_get_number_of_suites_run(void)"
 Retrieve the number of suites run.  Suite having initialization functions
 which fail are not run.  To get the total number of registered suites, use
 .B "CU_get_registry()->uiNumberOfSuites."
 .TP 5
+.B "unsigned int CU_get_number_of_suites_selected(void)"
+Retrieve the number of suites selected by the last run operation before
+activation checks were applied.
+.TP 5
 .B "unsigned int CU_get_number_of_suites_failed(void)"
-Retrieve the number of suites which had initialization or cleanup
-functions which failed (returned non-NULL).
+Retrieve the number of suites which had initialization or cleanup functions
+which failed, or inactive suites treated as failures.
+.TP 5
+.B "unsigned int CU_get_number_of_suites_inactive(void)"
+Retrieve the number of selected suites which were inactive.
 .TP 5
 .B "unsigned int CU_get_number_of_tests_run(void)"
-Retrieve the number of tests run.  Tests in suites having initialization
-functions which fail are not run.  To get the total number of registered tests
-, use
+Retrieve the number of selected active tests entered during the run.  Tests in
+suites having initialization functions which fail are not run.  To get the total
+number of registered tests, use
 .B "CU_get_registry()->uiNumberOfTests."
 .TP 5
+.B "unsigned int CU_get_number_of_tests_selected(void)"
+Retrieve the number of tests selected by the last run operation before
+activation checks were applied.
+.TP 5
 .B "unsigned int CU_get_number_of_tests_failed(void)"
-Retrieve the number of tests which contained at least 1 failed assertion.
+Retrieve the number of tests which failed during the run.
+.TP 5
+.B "unsigned int CU_get_number_of_tests_skipped(void)"
+Retrieve the number of selected active tests which self-skipped with
+.B CU_SKIP
+or
+.B CU_SKIP_IF
+before recording any failure.  Skipped tests are counted as run.
+.TP 5
+.B "unsigned int CU_get_number_of_tests_inactive(void)"
+Retrieve the number of selected tests which were inactive.
 .TP 5
 .B "unsigned int CU_get_number_of_asserts(void)"
 Retrieve the number of CUnit assertions made during the test run.
@@ -608,7 +639,7 @@ Retrieve the number of assertions which passed.
 .B "unsigned int CU_get_number_of_failures(void)"
 Retrieve the number of assertions which failed.
 .TP 5
-.B "const CU_pRunSummary CU_get_run_summary(void)"
+.B "CU_pRunSummary CU_get_run_summary(void)"
 Retrieve a
 .B CU_RunSummary
 containing all the run count information.  This data structure is
@@ -617,9 +648,11 @@ declared in
 and includes the (self-explanatory)
 .I "unsigned int"
 fields nSuitesRun, nSuitesFailed, nTestsRun, nTestsFailed, nAsserts,
-and nAssertsFailed.
+and nAssertsFailed, plus PackageName, nSuitesInactive, nTestsInactive,
+nFailureRecords, ElapsedTime, nSuitesSelected, nTestsSelected, and
+nTestsSkipped.
 .TP 5
-.B "const CU_pFailureRecord CU_get_failure_list(void)"
+.B "CU_pFailureRecord CU_get_failure_list(void)"
 Retrieve the head of the linked list of failure records for the last
 run.  Each assertion failure or suite init/cleanup function failure
 is registered in a new
@@ -639,6 +672,35 @@ and includes the following fields:
 .br
 .B "CU_pSuite    pSuite"
 .RE
+.TP 5
+.B "CU_pSkipRecord CU_get_skip_list(void)"
+Retrieve the head of the linked list of skip records for the last run.
+The list contains tests which called
+.B CU_SKIP
+or
+.B CU_SKIP_IF
+and did not record a failure.  Each skip record is a
+.B CU_SkipRecord
+declared in
+.B <CUnit/TestRun.h>
+and includes the following fields:
+.br
+.RS 10
+.B "unsigned int uiLineNumber"
+.br
+.B "char*        strFileName"
+.br
+.B "char*        strReason"
+.br
+.B "CU_pTest     pTest"
+.br
+.B "CU_pSuite    pSuite"
+.RE
+.TP 5
+.B "CU_pSkipRecord CU_get_current_test_skip_record(void)"
+Retrieve the skip record for the currently completing test, or NULL if the
+current test did not self-skip.  This is intended for use from a test-complete
+message handler.
 
 .SS "Automated Interface"
 The automated interface is non-interactive.  The current implementation only 
@@ -818,4 +880,3 @@ Jerry St.Clair <jds2@users.sourceforge.net>
 
 .SH WEBSITE
 http://cunit.sourceforge.net
-
