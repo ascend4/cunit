@@ -13,20 +13,9 @@ arch=('any')
 mingw_arch=('mingw32' 'mingw64' 'ucrt64' 'clang64' 'clangarm64')
 url='https://github.com/ascend4/cunit'
 license=('LGPL2.1')
-makedepends=("${MINGW_PACKAGE_PREFIX}-autotools" "${MINGW_PACKAGE_PREFIX}-cc")
-source=("${_distdir}.tar.gz"
-        "002-fix-shared.patch")
-sha256sums=('SKIP'
-            '03aa848d6cd7464f24efacccfffb4d3942515bde0b36c3ef5ea0d7141d663269')
-
-prepare() {
-  cd "${srcdir}/${_distdir}"
-  patch -Np1 -i "${srcdir}/002-fix-shared.patch"
-
-  if [ ! -x ./configure ]; then
-    ./bootstrap
-  fi
-}
+makedepends=("${MINGW_PACKAGE_PREFIX}-cc")
+source=("${_distdir}.tar.gz")
+sha256sums=('SKIP')
 
 build() {
   cd "${srcdir}"
