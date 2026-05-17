@@ -115,6 +115,14 @@ dots, for example `v2.1.3`.
 If the tag, `VERSION`, and `packaging/msys2/PKGBUILD` version fields do not
 all match, the release workflow fails before publishing any assets.
 
+To dry-run the release build without publishing a GitHub release, manually run
+the `CUnit Release` workflow from GitHub Actions on the release branch.  The
+optional `release_tag` input should match the normalized `VERSION` value, such
+as `v2.1.3`; if omitted, the workflow derives the expected tag from `VERSION`.
+The dry run builds and checks the source distribution, builds the MSYS2 UCRT64
+package, installs it, and runs the smoke test.  It uploads workflow artifacts
+only.  The final GitHub release is created only for a pushed `v*` tag.
+
 To publish a release:
 
 1. Update `VERSION` and the packaging metadata.
