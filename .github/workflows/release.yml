@@ -166,6 +166,39 @@ jobs:
             packaging/msys2/*.tar.gz
           if-no-files-found: error
 
+  test-source-dist-rocky8:
+    name: Test source dist (Rocky 8)
+    runs-on: ubuntu-latest
+    container: rockylinux:8
+    needs:
+      - verify-version
+      - source-dist
+
+    steps:
+      - name: Install build dependencies
+        run: dnf -y install gcc make diffutils findutils tar gzip
+
+      - name: Download source dist
+        uses: actions/download-artifact@v4
+        with:
+          name: cunit-source-dist
+          path: .
+
+      - name: Build and test source dist
+        env:
+          DIST_FILE: ${{ needs.verify-version.outputs.dist_file }}
+        run: |
+          tar -xzf "${DIST_FILE}.tar.gz"
+          mkdir build
+          cd build
+          "../${DIST_FILE}/configure" \
+            --prefix=/tmp/cunit-rocky8 \
+            --enable-debug \
+            --enable-test
+          make -j"$(nproc)"
+          ./CUnit/Sources/Test/test_cunit | tee test_cunit.log
+          grep -q "Failures: 0" test_cunit.log
+
   test-package:
     name: Test installed release package (UCRT64)
     runs-on: windows-latest
@@ -224,6 +257,7 @@ jobs:
     needs:
       - verify-version
       - source-dist
+      - test-source-dist-rocky8
       - test-package
 
     steps:

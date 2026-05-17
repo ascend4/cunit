@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  package:
-    name: Build MSYS2 package (UCRT64)
+  build:
+    name: Build on MSYS2 UCRT64
     runs-on: windows-latest
 
     defaults:
@@ -25,69 +25,6 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Verify VERSION matches PKGBUILD
-        id: version
-        shell: bash
-        run: |
-          version_file="$(tr -d '[:space:]' < VERSION)"
-          pkg_version="${version_file//-/.}"
-
-          if ! grep -Fq '_distver="$(tr -d' packaging/msys2/PKGBUILD || \
-             ! grep -Fq '< ../../VERSION)' packaging/msys2/PKGBUILD; then
-            echo "PKGBUILD _distver is not read from VERSION" >&2
-            exit 1
-          fi
-
-          if ! grep -Fq 'pkgver=${_distver//-/.}' packaging/msys2/PKGBUILD; then
-            echo "PKGBUILD pkgver is not derived from _distver" >&2
-            exit 1
-          fi
-
-          echo "dist_dir=cunit-${version_file}" >> "${GITHUB_OUTPUT}"
-          echo "dist_file=cunit-${version_file}" >> "${GITHUB_OUTPUT}"
-
-      - name: Set up MSYS2
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MSYS
-          update: true
-          cache: true
-          install: >-
-            base-devel
-            git
-
-      - name: Create source tarball for PKGBUILD
-        env:
-          DIST_DIR: ${{ steps.version.outputs.dist_dir }}
-          DIST_FILE: ${{ steps.version.outputs.dist_file }}
-        working-directory: packaging/msys2
-        run: |
-          git -C ../.. archive \
-            --format=tar.gz \
-            --prefix="${DIST_DIR}/" \
-            HEAD > "${DIST_FILE}.tar.gz"
-
-      - name: Build package
-        working-directory: packaging/msys2
-        run: MINGW_ARCH=ucrt64 makepkg-mingw -sCLf --noconfirm
-
-      - name: Upload package artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cunit-msys2-ucrt64-pkg
-          path: packaging/msys2/*.pkg.tar.zst
-          if-no-files-found: error
-
-  test-package:
-    name: Test installed MSYS2 package (UCRT64)
-    runs-on: windows-latest
-    needs: package
-
-    defaults:
-      run:
-        shell: msys2 {0}
-
-    steps:
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -95,22 +32,26 @@ jobs:
           update: true
           cache: true
           install: >-
+            base-devel
+            git
             mingw-w64-ucrt-x86_64-cc
             mingw-w64-ucrt-x86_64-pkgconf
 
-      - name: Download package artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: cunit-msys2-ucrt64-pkg
-          path: pkg
+      - name: Bootstrap and configure
+        run: ./bootstrap --configure --prefix "$(pwd)/_install" -- --enable-debug --enable-test
 
-      - name: Install package artifact
+      - name: Build
+        run: make -j"$(nproc)"
+
+      - name: Run internal self-tests
         run: |
-          pacman -U --noconfirm pkg/*.pkg.tar.zst
-          test -f "${MINGW_PREFIX}/include/CUnit/CUnit.h"
-          test -f "${MINGW_PREFIX}/lib/libcunit.a" || test -f "${MINGW_PREFIX}/lib/libcunit.dll.a"
+          ./CUnit/Sources/Test/test_cunit | tee test_cunit.log
+          grep -q "Failures: 0" test_cunit.log
 
-      - name: Smoke test installed package
+      - name: Install
+        run: make install
+
+      - name: Smoke test installed package metadata
         run: |
           cat > smoke.c <<'EOF'
           #include <CUnit/CUnit.h>
@@ -124,5 +65,7 @@ jobs:
           }
           EOF
 
+          export PATH="$(pwd)/_install/bin:${PATH}"
+          export PKG_CONFIG_PATH="$(pwd)/_install/lib/pkgconfig"
           gcc smoke.c -o smoke $(pkgconf --cflags --libs cunit)
           ./smoke

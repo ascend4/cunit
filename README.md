@@ -115,13 +115,26 @@ dots, for example `v2.1.3`.
 If the tag, `VERSION`, and `packaging/msys2/PKGBUILD` version fields do not
 all match, the release workflow fails before publishing any assets.
 
+For ordinary branch and pull-request work, use the normal build workflows:
+
+- `CUnit Ubuntu Build` builds from a git checkout on supported Ubuntu runners,
+  runs the internal self-tests, installs the library, and reports coverage.
+- `CUnit MSYS2 Build` builds from a git checkout on MSYS2 UCRT64, runs the
+  internal self-tests, installs the library, and smoke-tests the installed
+  `pkgconf` metadata.
+
+These workflows are checkout builds.  They do not validate release tarball
+packaging.
+
 To dry-run the release build without publishing a GitHub release, manually run
 the `CUnit Release` workflow from GitHub Actions on the release branch.  The
 optional `release_tag` input should match the normalized `VERSION` value, such
 as `v2.1.3`; if omitted, the workflow derives the expected tag from `VERSION`.
-The dry run builds and checks the source distribution, builds the MSYS2 UCRT64
-package, installs it, and runs the smoke test.  It uploads workflow artifacts
-only.  The final GitHub release is created only for a pushed `v*` tag.
+The release workflow builds one source tarball on Ubuntu with Automake
+`make distcheck`, then tests that same tarball on Ubuntu, Rocky 8, and MSYS2
+UCRT64.  The MSYS2 job builds its package from that tarball, installs the
+package, and runs the smoke test.  A dry run uploads workflow artifacts only.
+The final GitHub release is created only for a pushed `v*` tag.
 
 To publish a release:
 
