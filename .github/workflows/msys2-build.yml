@@ -34,6 +34,7 @@ jobs:
           install: >-
             base-devel
             git
+            mingw-w64-ucrt-x86_64-autotools
             mingw-w64-ucrt-x86_64-cc
             mingw-w64-ucrt-x86_64-pkgconf
 
