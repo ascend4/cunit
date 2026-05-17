@@ -21,14 +21,13 @@ build() {
   cd "${srcdir}"
   rm -rf "build-${MSYSTEM}" || true
   mkdir -p "build-${MSYSTEM}"
-  cp -Rf "${_distdir}/"* "build-${MSYSTEM}/"
   cd "build-${MSYSTEM}"
 
   # These checks fail with some MinGW targets unless we pin the known result.
   export ac_cv_func_time=yes
   export ac_cv_func_ctime=yes
 
-  ./configure \
+  "../${_distdir}/configure" \
     --prefix="${MINGW_PREFIX}" \
     --build="${MINGW_CHOST}" \
     --host="${MINGW_CHOST}" \
@@ -50,6 +49,6 @@ check() {
 package() {
   cd "${srcdir}/build-${MSYSTEM}"
   make DESTDIR="${pkgdir}" install
-  install -Dm644 COPYING "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
+  install -Dm644 "${srcdir}/${_distdir}/COPYING" "${pkgdir}${MINGW_PREFIX}/share/licenses/${_realname}/COPYING"
   find "${pkgdir}" -name '*.la' -delete
 }
