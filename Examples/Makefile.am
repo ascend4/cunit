@@ -23,7 +23,7 @@ EXAMPLE_DIRS += $(BASIC_EXAMPLE_DIRS) $(CONSOLE_EXAMPLE_DIRS) $(CURSES_EXAMPLE_D
 SUBDIRS = ${EXAMPLE_DIRS}
 
 if ENABLE_EXAMPLES
+AM_CPPFLAGS = -I$(top_builddir)/CUnit/Headers -I$(top_srcdir)/CUnit/Headers
 noinst_LIBRARIES = libcunitexamples.a
-libcunitexamples_a_SOURCES = ExampleTests.c
+libcunitexamples_a_SOURCES = ExampleTests.c ExampleTests.h
 endif
-

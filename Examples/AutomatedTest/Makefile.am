@@ -10,7 +10,7 @@ example_PROGRAMS = AutomatedTest
 AutomatedTest_SOURCES = AutomatedTest.c
 AutomatedTest_LDADD = -lcunit -lcunitexamples
 AutomatedTest_LDFLAGS = -L.. -lm
-AM_CPPFLAGS = -I..
+AM_CPPFLAGS = -I.. -I$(top_srcdir)/Examples -I$(top_builddir)/CUnit/Headers -I$(top_srcdir)/CUnit/Headers
 
 if ENABLE_CURSES
 AutomatedTest_LDADD += -l$(CURSES_LIB)
@@ -20,4 +20,3 @@ example_DATA = README
 
 endif
 endif
-
