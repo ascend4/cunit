@@ -130,6 +130,16 @@ To dry-run the release build without publishing a GitHub release, manually run
 the `CUnit Release` workflow from GitHub Actions on the release branch.  The
 optional `release_tag` input should match the normalized `VERSION` value, such
 as `v2.1.3`; if omitted, the workflow derives the expected tag from `VERSION`.
+From a feature branch, the equivalent GitHub CLI command is:
+
+```sh
+gh workflow run release.yml --ref your-feature-branch -f release_tag=v2.1.3
+```
+
+This runs the workflow on GitHub Actions using `your-feature-branch` as the
+source ref. The `release_tag` input is only validated against `VERSION`; it
+does not create a git tag or publish a GitHub release.
+
 The release workflow builds one source tarball on Ubuntu with Automake
 `make distcheck`, then tests that same tarball on Ubuntu, Rocky 8, and MSYS2
 UCRT64.  The MSYS2 job builds its package from that tarball, installs the
