@@ -1,7 +1,7 @@
 ## Process this file with automake to produce Makefile.in
 
 if ENABLE_TEST
-AM_CPPFLAGS = -I$(top_srcdir)/CUnit/Headers
+AM_CPPFLAGS = -I$(top_builddir)/CUnit/Headers -I$(top_srcdir)/CUnit/Headers
 testdir=${datadir}/@PACKAGE@/Test
 
 test_PROGRAMS = test_cunit

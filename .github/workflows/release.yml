@@ -96,10 +96,10 @@ jobs:
             libtool
 
       - name: Bootstrap
-        run: ./bootstrap --configure --prefix "${RUNNER_TEMP}/cunit-distcheck" -- --enable-debug --enable-test
+        run: ./bootstrap --configure --prefix "${RUNNER_TEMP}/cunit-distcheck" -- --enable-debug --enable-examples --enable-test
 
       - name: Build and check source dist
-        run: make distcheck DISTCHECK_CONFIGURE_FLAGS="--enable-debug --enable-test"
+        run: make distcheck DISTCHECK_CONFIGURE_FLAGS="--enable-debug --enable-examples --enable-test"
 
       - name: Verify source dist contents
         env:
@@ -110,6 +110,7 @@ jobs:
           tar -tzf "${DIST_FILE}.tar.gz" | grep -Fx "${DIST_FILE}/Makefile.in"
           tar -tzf "${DIST_FILE}.tar.gz" | grep -Fx "${DIST_FILE}/VERSION"
           tar -tzf "${DIST_FILE}.tar.gz" | grep -Fx "${DIST_FILE}/README.md"
+          tar -tzf "${DIST_FILE}.tar.gz" | grep -Fx "${DIST_FILE}/Examples/ExampleTests.h"
 
       - name: Upload source dist
         uses: actions/upload-artifact@v4
@@ -194,6 +195,7 @@ jobs:
           "../${DIST_FILE}/configure" \
             --prefix=/tmp/cunit-rocky8 \
             --enable-debug \
+            --enable-examples \
             --enable-test
           make -j"$(nproc)"
           ./CUnit/Sources/Test/test_cunit | tee test_cunit.log
