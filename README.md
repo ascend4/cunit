@@ -26,46 +26,6 @@ Note: the Windows-specific GUI interface is not yet written. It is still
 necessary to use either the automated, basic, or console interfaces to CUnit
 on Windows at this time.
 
-## Important Note: Changes to CUnit Structure and Interface
-
-As of version 2.0, the interface functions used to interact with the CUnit
-framework have changed. The original interface did not attempt to protect user
-code from name clashes with public CUnit functions and variables. To minimize
-such name clashes, all CUnit public functions are now prefixed with `CU_`.
-
-The old public names are deprecated as of version 2.0, but continue to be
-supported with conversion macros. In order to compile older code using the
-original interface, it is now necessary to compile with the macro
-`-DUSE_DEPRECATED_CUNIT_NAMES` defined. If there are any problems compiling
-older code, please file a bug report.
-
-In addition, the DTD and XSL files for output from the automated test
-interface have been updated to support both old and new file structure. A List
-or Run file generated using the version 1.1 library should be valid under the
-version 2 DTDs and formatted correctly by the version 2 XSLs. This has not
-been extended to the Memory-Dump DTD and XSL files; memory dumps created using
-version 1.1 are ill-formed and incorrectly formatted using the version 2 DTD
-and XSL files.
-
-Another exception to backward compatibility occurs if the user has directly
-manipulated the global variables in version 1.1. The original CUnit structure
-included global variables `error_number` and `g_pTestRegistry` which have been
-removed from the global namespace as of version 2.0. Any user code which
-directly accessed these variables will break. The variables must be retrieved
-using the accessor functions `CU__get_error()` and `CU_get_registry()`.
-
-Similarly, user code retrieving the active test registry and directly
-manipulating the `uiNumberOfFailures` or `pResult` members will break. These
-members have been moved to the `TestRun.c` part of the framework and are no
-longer available in the test registry as of version 2.0.
-
-Another change in version 2.0 is the update of the framework terminology. What
-were termed "test groups" in the original structure are now called "suites",
-and "test cases" are now just "tests". This change was made to bring CUnit
-into conformance with standard testing terminology, and results in a change in
-the name of some functions, for example `run_group_tests()` is now
-`CU_run_suite()`.
-
 ## Building the CUnit Library and Examples
 
 ### All Platforms
@@ -93,6 +53,19 @@ What is installed:
 4. Man pages in the relevant man directories under the installation path
 5. The HTML users guide in the `doc` subdirectory of the installation path
 6. Example and test programs in the `share` subdirectory of the install path
+
+### Testing
+
+To build the internal CUnit self-tests from a git checkout, configure with `--enable-test` and then run `make check`:
+
+1. `./configure --enable-test --prefix <installation-prefix>`
+2. `make check`
+
+The internal test runner is built as `CUnit/Sources/Test/test_cunit`. You can also run it directly after `make` or `make check`:
+
+- `./CUnit/Sources/Test/test_cunit`
+
+`make check` works because the internal runner is wired into Automake's usual `TESTS` mechanism in `CUnit/Sources/Test/Makefile.am`, and the runner exits non-zero if any internal assertions fail.
 
 ### Windows
 
@@ -158,3 +131,44 @@ The release workflow publishes both a source tarball and the MSYS2 UCRT64
 with Automake `make distcheck`, so it includes `configure` and the generated
 `Makefile.in` files. Building directly from a git checkout still requires
 `./bootstrap` before `./configure`.
+
+## Important Note: Changes to CUnit Structure and Interface
+
+As of version 2.0, the interface functions used to interact with the CUnit
+framework have changed. The original interface did not attempt to protect user
+code from name clashes with public CUnit functions and variables. To minimize
+such name clashes, all CUnit public functions are now prefixed with `CU_`.
+
+The old public names are deprecated as of version 2.0, but continue to be
+supported with conversion macros. In order to compile older code using the
+original interface, it is now necessary to compile with the macro
+`-DUSE_DEPRECATED_CUNIT_NAMES` defined. If there are any problems compiling
+older code, please file a bug report.
+
+In addition, the DTD and XSL files for output from the automated test
+interface have been updated to support both old and new file structure. A List
+or Run file generated using the version 1.1 library should be valid under the
+version 2 DTDs and formatted correctly by the version 2 XSLs. This has not
+been extended to the Memory-Dump DTD and XSL files; memory dumps created using
+version 1.1 are ill-formed and incorrectly formatted using the version 2 DTD
+and XSL files.
+
+Another exception to backward compatibility occurs if the user has directly
+manipulated the global variables in version 1.1. The original CUnit structure
+included global variables `error_number` and `g_pTestRegistry` which have been
+removed from the global namespace as of version 2.0. Any user code which
+directly accessed these variables will break. The variables must be retrieved
+using the accessor functions `CU__get_error()` and `CU_get_registry()`.
+
+Similarly, user code retrieving the active test registry and directly
+manipulating the `uiNumberOfFailures` or `pResult` members will break. These
+members have been moved to the `TestRun.c` part of the framework and are no
+longer available in the test registry as of version 2.0.
+
+Another change in version 2.0 is the update of the framework terminology. What
+were termed "test groups" in the original structure are now called "suites",
+and "test cases" are now just "tests". This change was made to bring CUnit
+into conformance with standard testing terminology, and results in a change in
+the name of some functions, for example `run_group_tests()` is now
+`CU_run_suite()`.
+

@@ -71,7 +71,7 @@ int main()
   test_cunit_report_results();
   CU_cleanup_registry();
 
-	return 0;
+	return (0 == f_nFailures) ? 0 : 1;
 }
 
 void test_cunit_start_tests(const char* strName)

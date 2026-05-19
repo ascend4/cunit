@@ -1,3 +1,5 @@
+m4
+test-driver
 **/Makefile.in
 aclocal.m4
 autom4te.cache/
@@ -30,3 +32,7 @@ CUnit/Headers/CUnit.h
 CUnit*Dump.xml
 stamp-h1
 CUnit/Sources/Test/test_cunit
+CUnit/Sources/Test/test-suite.log
+CUnit/Sources/Test/test_cunit.log
+CUnit/Sources/Test/test_cunit.trs
+cunit-*.tar.gz

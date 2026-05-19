@@ -2,7 +2,9 @@ dnl Applied patch to handle AC_ARG_ENABLE targets (Patch 1250604) - Provided by 
 
 m4_define([CUNIT_DIST_VERSION], m4_esyscmd_s([cat VERSION]))
 AC_INIT([CUnit], [CUNIT_DIST_VERSION])
-AM_INIT_AUTOMAKE([CUnit], [CUNIT_DIST_VERSION])
+AC_CONFIG_MACRO_DIRS([m4])
+AM_INIT_AUTOMAKE([foreign])
+AC_USE_SYSTEM_EXTENSIONS
 
 dnl Package version information
 PACKAGE=CUnit
@@ -169,7 +171,7 @@ dnl Check for programs.
 AC_PROG_CC
 AC_PROG_INSTALL
 AC_PROG_MAKE_SET
-AC_PROG_LIBTOOL
+LT_INIT
 
 dnl Check for libraries
 AC_CHECK_LIB(c, main)
@@ -209,17 +211,12 @@ AC_CHECK_FUNC(setvbuf, [], [echo setvbuf not found; exit 1])
 AC_CHECK_FUNC(time, [], [echo time not found; exit 1])
 AC_CHECK_FUNC(ctime, [], [echo ctime not found; exit 1])
 
-dnl Check for header files.
-AC_HEADER_STDC
-AC_CHECK_HEADERS(assert.h)
-AC_CHECK_HEADERS(ctype.h)
-AC_CHECK_HEADERS(math.h)
-AC_CHECK_HEADERS(file.h)
-AC_CHECK_HEADERS(stdio.h)
-AC_CHECK_HEADERS(stdlib.h)
-AC_CHECK_HEADERS(string.h)
+AC_CHECK_FUNCS([close dup dup2 fileno mkstemp unlink])
 
-AM_CONFIG_HEADER(config.h)
+dnl Check for header files.
+AC_CHECK_HEADERS([assert.h ctype.h errno.h fcntl.h math.h file.h stdio.h stdlib.h string.h sys/stat.h unistd.h])
+
+AC_CONFIG_HEADERS([config.h])
 
 dnl Check for typedefs, structures, and compiler characteristics.
 AC_C_CONST
