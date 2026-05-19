@@ -54,6 +54,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <assert.h>
+#include <limits.h>
 #include <string.h>
 
 #include "CUnit.h"
@@ -80,6 +81,17 @@ static CU_pSuite f_pRunningSuite = NULL;
 /** Common width measurements for output formatting. */
 static size_t f_yes_width = 0;
 static size_t f_no_width = 0;
+/* printf width and precision arguments are typed as int. */
+static int display_width(size_t width)
+{
+  assert(width <= INT_MAX);
+  return (int)width;
+}
+
+static size_t max_size_t(size_t a, size_t b)
+{
+  return (a >= b) ? a : b;
+}
 
 /*=================================================================
  *  Static function forward declarations
@@ -104,6 +116,23 @@ static CU_ErrorCode select_suite(CU_pTestRegistry pRegistry, CU_pSuite* ppSuite)
 static void list_suites(CU_pTestRegistry pRegistry);
 static void list_tests(CU_pSuite pSuite);
 static void show_failures(void);
+static int read_line(char* buffer, size_t size);
+
+/*=================================================================
+ *  Private helper functions
+ *=================================================================*/
+static int read_line(char* buffer, size_t size)
+{
+  if (NULL == fgets(buffer, (int)size, stdin)) {
+    if (size > 0) {
+      buffer[0] = '\0';
+    }
+    clearerr(stdin);
+    return 0;
+  }
+
+  return 1;
+}
 
 /*=================================================================
  *  Public Interface functions
@@ -164,7 +193,10 @@ static void console_registry_level_run(CU_pTestRegistry pRegistry)
                     _("(R)un  (S)elect  (L)ist  (A)ctivate  (F)ailures  (O)ptions  (H)elp  (Q)uit"),
                     _("Enter command: "));
     chChoice = toupper(getchar());
-    fgets(szTemp, 256, stdin);      /* flush any chars out of the read buffer */
+    if (!read_line(szTemp, sizeof(szTemp))) {
+      eStatus = CU_STATUS_STOP;
+      continue;
+    }
 
     if (chChoice == _("R")[0]) {
       console_run_all_tests(pRegistry);
@@ -243,7 +275,10 @@ static CU_STATUS console_suite_level_run(CU_pSuite pSuite)
                     _("(R)un (S)elect (L)ist (A)ctivate (F)ailures (U)p (O)ptions (H)elp (Q)uit"),
                     _("Enter command: "));
     chChoice = toupper(getchar());
-    fgets(szTemp, 256, stdin);      /* flush any chars out of the read buffer */
+    if (!read_line(szTemp, sizeof(szTemp))) {
+      eStatus = CU_STATUS_STOP;
+      continue;
+    }
 
     if (chChoice == _("R")[0]) {
       console_run_suite(pSuite);
@@ -322,7 +357,10 @@ static CU_STATUS console_set_options_run(void)
     fprintf(stdout, "%s",
                     _("Enter number of option to change : "));
     chChoice = getchar();
-    fgets(szTemp, 256, stdin);      /* flush any chars out of the read buffer */
+    if (!read_line(szTemp, sizeof(szTemp))) {
+      eStatus = CU_STATUS_MOVE_UP;
+      continue;
+    }
 
     switch (tolower(chChoice)) {
       case '1':
@@ -420,7 +458,9 @@ static CU_ErrorCode select_test(CU_pSuite pSuite, CU_pTest* ppTest)
     fprintf(stdout, "\n");
     fprintf(stdout, _("Enter number of test to select (1-%u) : "),
                     pSuite->uiNumberOfTests);
-    fgets(buffer, 100, stdin);
+    if (!read_line(buffer, sizeof(buffer))) {
+      return CUE_NOTEST;
+    }
 
     *ppTest = CU_get_test_by_index(atol(buffer), pSuite);
   }
@@ -459,7 +499,9 @@ static CU_ErrorCode select_suite(CU_pTestRegistry pRegistry, CU_pSuite* ppSuite)
     fprintf(stdout, "\n");
     fprintf(stdout, _("Enter number of suite to select (1-%u) : "),
                     pRegistry->uiNumberOfSuites);
-    fgets(buffer, 100, stdin);
+    if (!read_line(buffer, sizeof(buffer))) {
+      return CUE_NOSUITE;
+    }
 
     *ppSuite = CU_get_suite_by_index(atol(buffer), pRegistry);
   }
@@ -476,7 +518,7 @@ static void list_suites(CU_pTestRegistry pRegistry)
 {
   CU_pSuite pCurSuite = NULL;
   int i;
-  static size_t width[6];
+  static int width[6];
 
   if (NULL == pRegistry) {
     pRegistry = CU_get_registry();
@@ -492,12 +534,12 @@ static void list_suites(CU_pTestRegistry pRegistry)
 
   /* only need to calculate formatting widths once */
   if (0 == width[0]) {
-    width[0] = CU_number_width(pRegistry->uiNumberOfSuites) + 1;
+    width[0] = display_width(CU_number_width(pRegistry->uiNumberOfSuites) + 1);
     width[1] = 34;
-    width[2] = CU_MAX(strlen(_("Init?")), CU_MAX(f_yes_width, f_no_width)) + 1;
-    width[3] = CU_MAX(strlen(_("Cleanup?")), CU_MAX(f_yes_width, f_no_width)) + 1;
-    width[4] = CU_MAX(strlen(_("#Tests")), CU_number_width(pRegistry->uiNumberOfTests) + 1) + 1;
-    width[5] = CU_MAX(strlen(_("Active?")), CU_MAX(f_yes_width, f_no_width)) + 1;
+    width[2] = display_width(max_size_t(strlen(_("Init?")), max_size_t(f_yes_width, f_no_width)) + 1);
+    width[3] = display_width(max_size_t(strlen(_("Cleanup?")), max_size_t(f_yes_width, f_no_width)) + 1);
+    width[4] = display_width(CU_MAX(strlen(_("#Tests")), CU_number_width(pRegistry->uiNumberOfTests) + 1) + 1);
+    width[5] = display_width(max_size_t(strlen(_("Active?")), max_size_t(f_yes_width, f_no_width)) + 1);
   }
 
   fprintf(stdout, "\n%s",   _("--------------------- Registered Suites -----------------------------"));
@@ -533,7 +575,7 @@ static void list_tests(CU_pSuite pSuite)
 {
   CU_pTest pCurTest = NULL;
   unsigned int uiCount;
-  static size_t width[3];
+  static int width[3];
 
   assert(NULL != pSuite);
   assert(NULL != pSuite->pName);
@@ -548,10 +590,10 @@ static void list_tests(CU_pSuite pSuite)
   assert(NULL != pSuite->pTest);
 
   /* only number of tests can change between calls */
-  width[0] = CU_number_width(pSuite->uiNumberOfTests) + 1;
+  width[0] = display_width(CU_number_width(pSuite->uiNumberOfTests) + 1);
   if (0 == width[1]) {
     width[1] = 34;
-    width[2] = CU_MAX(strlen(_("Active?")), CU_MAX(f_yes_width, f_no_width)) + 1;
+    width[2] = display_width(max_size_t(strlen(_("Active?")), max_size_t(f_yes_width, f_no_width)) + 1);
   }
 
   fprintf(stdout, "\n%s",

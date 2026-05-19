@@ -198,8 +198,7 @@ jobs:
             --enable-examples \
             --enable-test
           make -j"$(nproc)"
-          ./CUnit/Sources/Test/test_cunit | tee test_cunit.log
-          grep -q "Failures: 0" test_cunit.log
+          make check
 
   test-package:
     name: Test installed release package (UCRT64)

@@ -74,6 +74,10 @@
  @{
 */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -299,7 +303,7 @@ static void cu_capture_stop(int dump){
   }
   cu_capture_cleanup_files();
 }
-#else
+#elif defined(HAVE_UNISTD_H) && defined(HAVE_FCNTL_H) && defined(HAVE_SYS_STAT_H) && defined(HAVE_CLOSE) && defined(HAVE_DUP) && defined(HAVE_DUP2) && defined(HAVE_FILENO) && defined(HAVE_MKSTEMP) && defined(HAVE_UNLINK)
 # include <unistd.h>
 # include <fcntl.h>
 # include <sys/stat.h>
@@ -424,6 +428,14 @@ static void cu_capture_stop(int dump){
     f_capture_err_fd = -1;
   }
   cu_capture_cleanup_files();
+}
+#else
+static int cu_capture_start(void){
+  return -1;
+}
+
+static void cu_capture_stop(int dump){
+  (void)dump;
 }
 #endif /* CU_PLATFORM_WIN32 */
 /*=================================================================
@@ -1638,9 +1650,9 @@ static CU_ErrorCode run_single_test(CU_pTest pTest, CU_pRunSummary pRunSummary)
   /* keep track of the last failure BEFORE running the test */
   volatile CU_pFailureRecord pLastFailure = f_last_failure;
   jmp_buf buf;
-  CU_ErrorCode result = CUE_SUCCESS;
-  int capture_enabled = 0;
-  int test_failed = 0;
+  volatile CU_ErrorCode result = CUE_SUCCESS;
+  volatile int capture_enabled = 0;
+  volatile int test_failed = 0;
 
   assert(NULL != f_pCurSuite);
   assert(CU_FALSE != f_pCurSuite->fActive);
@@ -2169,7 +2181,6 @@ static void test_message_handlers(void)
   CU_pTest  pTest1 = NULL;
   CU_pTest  pTest2 = NULL;
   CU_pTest  pTest3 = NULL;
-  CU_pTest  pTest4 = NULL;
   CU_pTest  pTest5 = NULL;
   CU_pTest  pTest6 = NULL;
   CU_pTest  pTest7 = NULL;
@@ -2194,7 +2205,7 @@ static void test_message_handlers(void)
   pTest2 = CU_add_test(pSuite1, "test2", test_fail);
   pTest3 = CU_add_test(pSuite1, "test3", test_succeed);
   pSuite2 = CU_add_suite("suite2", suite_fail, NULL);
-  pTest4 = CU_add_test(pSuite2, "test4", test_succeed);
+  CU_add_test(pSuite2, "test4", test_succeed);
   pSuite3 = CU_add_suite("suite3", suite_succeed, suite_fail);
   pTest5 = CU_add_test(pSuite3, "test5", test_fail);
   pTest6 = CU_add_test(pSuite3, "test6", test_fail);
@@ -3087,12 +3098,8 @@ static void test_CU_run_suite(void)
   CU_pTest pTest3 = NULL;
   CU_pTest pTest4 = NULL;
   CU_pTest pTest5 = NULL;
-  CU_pTest pTest6 = NULL;
-  CU_pTest pTest7 = NULL;
   CU_pTest pTest8 = NULL;
   CU_pTest pTest9 = NULL;
-  CU_pTest pTest10 = NULL;
-  CU_pTest pTest11 = NULL;
 
   /* error - NULL suite (CUEA_IGNORE) */
   CU_set_error_action(CUEA_IGNORE);
@@ -3123,16 +3130,16 @@ static void test_CU_run_suite(void)
   pTest4 = CU_add_test(pSuite1, "test4", test_fail);
   pTest5 = CU_add_test(pSuite1, "test5", test_succeed);
   pSuite2 = CU_add_suite("suite1", suite_fail, NULL);   /* duplicate suite name OK */
-  pTest6 = CU_add_test(pSuite2, "test6", test_succeed);
-  pTest7 = CU_add_test(pSuite2, "test7", test_succeed);
+  CU_add_test(pSuite2, "test6", test_succeed);
+  CU_add_test(pSuite2, "test7", test_succeed);
   pSuite3 = CU_add_suite("suite3", NULL, suite_fail);
   pTest8 = CU_add_test(pSuite3, "test8", test_fail);
   pTest9 = CU_add_test(pSuite3, "test8", test_succeed); /* duplicate test name OK */
   pSuite4 = CU_add_suite("suite4", NULL, NULL);
   pSuite5 = CU_add_suite_with_setup_and_teardown("suite5", NULL, NULL, suite_setup, suite_teardown);
-  pTest10 = CU_add_test(pSuite5, "test10", test_succeed_if_setup);
+  CU_add_test(pSuite5, "test10", test_succeed_if_setup);
   pSuite6 = CU_add_suite("suite6", NULL, NULL);
-  pTest11 = CU_add_test(pSuite6, "test11", test_fail_if_not_setup);
+  CU_add_test(pSuite6, "test11", test_fail_if_not_setup);
 
   TEST_FATAL(6 == CU_get_registry()->uiNumberOfSuites);
   TEST_FATAL(11 == CU_get_registry()->uiNumberOfTests);
