@@ -66,8 +66,8 @@ jobs:
             exit 1
           fi
 
-          if ! grep -Fq 'm4_esyscmd_s([cat VERSION])' configure.in; then
-            echo "configure.in does not read VERSION for AC_INIT" >&2
+          if ! grep -Fq 'm4_esyscmd_s([cat VERSION])' configure.ac; then
+            echo "configure.ac does not read VERSION for AC_INIT" >&2
             exit 1
           fi
 
