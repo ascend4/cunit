@@ -10,5 +10,6 @@ TESTS = $(test_PROGRAMS)
 test_cunit_SOURCES = test_cunit.c test_cunit.h
 test_cunit_LDADD = ../libcunit_test.a
 test_cunit_LDFLAGS = -L..
+DISTCLEANFILES = CUnit-Memory-Dump.xml
 
 endif

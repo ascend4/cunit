@@ -17,6 +17,7 @@ AutomatedTest_LDADD += -l$(CURSES_LIB)
 endif
 
 example_DATA = README
+DISTCLEANFILES = TestAutomated-Listing.xml TestAutomated-Results.xml CUnit-Memory-Dump.xml
 
 endif
 endif

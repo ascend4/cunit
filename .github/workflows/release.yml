@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Verify tag matches VERSION
         id: verify
@@ -84,7 +84,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install build dependencies
         run: |
@@ -113,7 +113,7 @@ jobs:
           tar -tzf "${DIST_FILE}.tar.gz" | grep -Fx "${DIST_FILE}/Examples/ExampleTests.h"
 
       - name: Upload source dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cunit-source-dist
           path: ${{ needs.verify-version.outputs.dist_file }}.tar.gz
@@ -136,7 +136,7 @@ jobs:
         run: git config --global core.autocrlf input
 
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up MSYS2
         uses: msys2/setup-msys2@v2
@@ -149,7 +149,7 @@ jobs:
             git
 
       - name: Download source dist for PKGBUILD
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cunit-source-dist
           path: packaging/msys2
@@ -159,7 +159,7 @@ jobs:
         run: MINGW_ARCH=ucrt64 makepkg-mingw -sCLf --noconfirm
 
       - name: Upload release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: cunit-release-assets
           path: |
@@ -180,7 +180,7 @@ jobs:
         run: dnf -y install gcc make diffutils findutils tar gzip
 
       - name: Download source dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cunit-source-dist
           path: .
@@ -221,7 +221,7 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
 
       - name: Download release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cunit-release-assets
           path: release-assets
@@ -263,12 +263,12 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Download release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: cunit-release-assets
           path: release-assets
