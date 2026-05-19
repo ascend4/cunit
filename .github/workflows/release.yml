@@ -149,7 +149,7 @@ jobs:
             git
 
       - name: Download source dist for PKGBUILD
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: cunit-source-dist
           path: packaging/msys2
@@ -180,7 +180,7 @@ jobs:
         run: dnf -y install gcc make diffutils findutils tar gzip
 
       - name: Download source dist
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: cunit-source-dist
           path: .
@@ -221,7 +221,7 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
 
       - name: Download release assets
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: cunit-release-assets
           path: release-assets
@@ -268,7 +268,7 @@ jobs:
           fetch-depth: 0
 
       - name: Download release assets
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: cunit-release-assets
           path: release-assets
